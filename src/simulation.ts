@@ -104,6 +104,7 @@ export class Simulation {
   private nextBehaviorCheck = 1;
   private randomState = 42;
   private eventId = 0;
+  private desiredLane: 0 | 1 = 0;
 
   constructor(
     settings: Settings = DEFAULT_SETTINGS,
@@ -118,14 +119,16 @@ export class Simulation {
     return this.vehicles[0];
   }
 
-  get phase(): "blocking" | "overtaking" | "clear" | "crashed" {
+  get phase(): "blocking" | "overtaking" | "clear" | "returning" | "crashed" {
     return this.crash
       ? "crashed"
-      : this.clearedTime !== null
-        ? "clear"
-        : this.releaseTime !== null
-          ? "overtaking"
-          : "blocking";
+      : this.desiredLane === 0
+        ? this.blocker.lane === 0
+          ? "blocking"
+          : "returning"
+        : this.blocker.lane === 1
+          ? "clear"
+          : "overtaking";
   }
 
   reset(): void {
@@ -137,6 +140,7 @@ export class Simulation {
     this.nextBehaviorCheck = 1;
     this.randomState = 42;
     this.eventId = 0;
+    this.desiredLane = 0;
     this.events = [];
     this.attack = null;
     this.crash = null;
@@ -204,9 +208,18 @@ export class Simulation {
   }
 
   release(): void {
-    if (this.phase === "blocking") {
+    if (this.phase === "blocking" || this.phase === "returning") {
+      this.desiredLane = 1;
       this.releaseTime = this.time;
       this.attack = null;
+    }
+  }
+
+  occupy(): void {
+    if (this.phase === "clear" || this.phase === "overtaking") {
+      this.desiredLane = 0;
+      this.clearedTime = null;
+      this.blocker.cooldown = 0;
     }
   }
 
@@ -271,6 +284,7 @@ export class Simulation {
     }
     if (!placed) return false;
     this.vehicles.unshift(next);
+    this.desiredLane = 0;
     this.crash = null;
     this.releaseTime = null;
     this.clearedTime = null;
@@ -493,7 +507,7 @@ export class Simulation {
       return kmh(
         this.phase === "blocking"
           ? blockerSpeed
-          : this.phase === "overtaking"
+          : this.phase === "overtaking" || this.phase === "returning"
             ? Math.max(speedLimit, blockerSpeed, fasterSpeed)
             : speedLimit,
       );
@@ -525,6 +539,13 @@ export class Simulation {
         continue;
       if (vehicle.cooldown > 0) continue;
       if (vehicle.kind === "blocker" && this.phase === "blocking") continue;
+      if (vehicle.kind === "blocker" && this.phase === "returning") {
+        if (this.canMerge(vehicle, 0)) {
+          vehicle.lane = 0;
+          vehicle.cooldown = 5;
+        }
+        continue;
+      }
       if (vehicle.passTarget !== null) {
         const target = this.vehicles.find(
           (other) => other.id === vehicle.passTarget,
@@ -599,14 +620,20 @@ export class Simulation {
             (!front || left.gap < front.gap)
           )
             front = left;
-          // A signaled return right prompts the following driver to open a gap.
-          if (this.phase === "overtaking") {
-            const gap =
-              this.distance(vehicle.x, this.blocker.x) -
-              (vehicle.length + this.blocker.length) / 2;
-            if (gap < 100 && (!front || gap <= front.gap))
-              front = { vehicle: this.blocker, gap };
-          }
+        }
+        // A requested lane change prompts the following driver in that lane to yield.
+        const yieldingLane =
+          this.phase === "overtaking"
+            ? 1
+            : this.phase === "returning"
+              ? 0
+              : null;
+        if (vehicle.lane === yieldingLane && vehicle.id !== this.blocker.id) {
+          const gap =
+            this.distance(vehicle.x, this.blocker.x) -
+            (vehicle.length + this.blocker.length) / 2;
+          if (gap < 100 && (!front || gap <= front.gap))
+            front = { vehicle: this.blocker, gap };
         }
         const desired = Math.max(
           kmh(10),
@@ -616,9 +643,7 @@ export class Simulation {
         if (front) {
           const closing = vehicle.speed - front.vehicle.speed;
           const yielding =
-            vehicle.lane === 1 &&
-            front.vehicle.kind === "blocker" &&
-            this.phase === "overtaking";
+            vehicle.lane === yieldingLane && front.vehicle.kind === "blocker";
           const safeGap =
             3 +
             Math.max(

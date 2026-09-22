@@ -26,17 +26,35 @@ test("simulation renders without browser errors and playback controls work", asy
   expect(errors).toEqual([]);
 });
 
-test("the intervention completes and restart restores the blocker", async ({
+test("the intervention toggles between clearing and occupying with the same scene", async ({
   page,
 }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "5×" }).click();
   await page.getByRole("button", { name: "Clear the left lane" }).click();
-  await expect(page.locator("#release")).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Occupy the left lane" }),
+  ).toBeEnabled();
   await expect(page.locator("#road-status")).toHaveText("Blocker moved right", {
     timeout: 20000,
   });
-  await expect(page.locator("#release")).toHaveText("Left lane released");
+  await expect(page.locator("#release")).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await page.getByRole("button", { name: "Occupy the left lane" }).click();
+  await expect(page.locator("#road-status")).toHaveText("Left lane blocked", {
+    timeout: 20000,
+  });
+  await expect(page.locator("#release")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.locator("#clock")).not.toHaveText("00:00");
+  await page.getByRole("button", { name: "Clear the left lane" }).click();
+  await expect(page.locator("#road-status")).toHaveText("Blocker moved right", {
+    timeout: 20000,
+  });
   await page.getByRole("button", { name: "Restart simulation" }).click();
   await expect(page.locator("#road-status")).toHaveText("Left lane blocked");
   await expect(

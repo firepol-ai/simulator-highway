@@ -285,7 +285,7 @@ export class RoadRenderer {
         ctx.font = "600 10px Arial";
         ctx.fillStyle = "#81572b";
         ctx.fillText(
-          `${sim.phase === "clear" ? "BACK IN THE RIGHT LANE" : sim.phase === "overtaking" ? "FINISHING THE PASS" : "BLOCKING DRIVER"}${sim.phase === "blocking" ? ` · ${Math.round(vehicle.speed * 3.6)}` : ""}`,
+          `${sim.phase === "clear" ? "BACK IN THE RIGHT LANE" : sim.phase === "returning" ? "RETURNING TO THE LEFT" : sim.phase === "overtaking" ? "FINISHING THE PASS" : "BLOCKING DRIVER"}${sim.phase === "blocking" ? ` · ${Math.round(vehicle.speed * 3.6)}` : ""}`,
           labelX,
           labelY + 19,
         );

@@ -134,23 +134,25 @@ function updateUI(): void {
     const release = $<HTMLButtonElement>("#release");
     $("#spawn-blocker").hidden = phase !== "crashed";
     $(".intervention").classList.toggle("has-wreck", phase === "crashed");
-    release.disabled = phase !== "blocking" && phase !== "crashed";
+    const blockingRequested = phase === "blocking" || phase === "returning";
+    if (phase === "crashed") release.removeAttribute("aria-pressed");
+    else release.setAttribute("aria-pressed", String(blockingRequested));
     release.innerHTML =
       phase === "crashed"
         ? "Restart to try again"
-        : phase === "blocking"
+        : blockingRequested
           ? `Clear the left lane ${icon("arrow")}`
-          : phase === "overtaking"
-            ? "Overtaking…"
-            : `Left lane released ${icon("check")}`;
+          : `Occupy the left lane ${icon("road")}`;
     $("#road-status").textContent =
       phase === "crashed"
         ? "Blocker crashed off-road"
         : phase === "blocking"
           ? "Left lane blocked"
-          : phase === "overtaking"
-            ? "Finding a safe gap"
-            : "Blocker moved right";
+          : phase === "returning"
+            ? "Moving back to the left"
+            : phase === "overtaking"
+              ? "Finding a safe gap"
+              : "Blocker moved right";
     $(".road-badge").classList.toggle("is-clear", phase === "clear");
     $(".road-badge").classList.toggle("is-crashed", phase === "crashed");
     $("#action-title").textContent =
@@ -158,17 +160,21 @@ function updateUI(): void {
         ? "Well, that escalated."
         : phase === "blocking"
           ? "Give traffic a little room."
-          : phase === "overtaking"
-            ? "A safe pass takes a moment."
-            : "Room to move again.";
+          : phase === "returning"
+            ? "Back for another round."
+            : phase === "overtaking"
+              ? "A safe pass takes a moment."
+              : "Room to move again.";
     $("#action-description").textContent =
       phase === "crashed"
         ? "Leave the wreck in place and spawn another blocker, or restart the whole scene."
         : phase === "blocking"
           ? "Let the orange car finish overtaking and move back to the right."
-          : phase === "overtaking"
-            ? "The driver is finishing the pass and looking for a safe gap on the right."
-            : "Watch the cars behind accelerate. Restart to run the experiment again.";
+          : phase === "returning"
+            ? "The same driver is waiting for a gap to move left and resume blocking."
+            : phase === "overtaking"
+              ? "The driver is finishing the pass and looking for a safe gap on the right."
+              : "Watch traffic recover, or occupy the left lane again with the same driver.";
   }
   const latest = sim.events.at(-1);
   const active = Object.values(sim.arcade).some(Boolean);
@@ -250,7 +256,9 @@ $("#release").addEventListener("click", () => {
     sim.reset();
     audio.stop();
     lastAudioEvent = 0;
-  } else sim.release();
+  } else if (sim.phase === "blocking" || sim.phase === "returning")
+    sim.release();
+  else sim.occupy();
   updateUI();
 });
 $("#show-speeds").addEventListener("change", (event) => {

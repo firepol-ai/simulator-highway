@@ -20,6 +20,7 @@ Open the local URL printed by Vite, normally `http://localhost:5173`.
 - Adjust the speed limit, faster drivers’ desired speed (60–300 km/h), vehicle count, and blocking driver’s speed (40–300 km/h). Driver speeds are independent of the speed limit; defaults are 135 km/h for faster drivers and 110 km/h for the blocker. Each change restarts the scene.
 - Let traffic develop for 30–60 simulated seconds. Use 2× or 5× playback to speed up the experiment.
 - Select **Clear the left lane**. The orange car accelerates, waits for a safe gap, and merges right. The nearby right-lane follower allows extra space for the signaled merge.
+- The button then becomes **Occupy the left lane**. Select it to send the same driver back left through an available gap and resume its blocking speed, without resetting traffic or the chart. You can reverse either request while the driver is still waiting to change lanes.
 - Compare average speed and the number of held-back vehicles. The chart marks the release time; recovery is gradual and depends on density and other slow vehicles.
 - Pause, restart, or hide individual speed labels at any time.
 

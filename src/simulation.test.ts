@@ -467,3 +467,51 @@ test("spawning waits rather than inserting a blocker into a full lane", () => {
   assert.equal(sim.phase, "crashed");
   assert.equal(sim.wrecks.length, 1);
 });
+
+test("the same blocker can repeatedly clear and reoccupy without resetting traffic", () => {
+  for (const vehicleCount of [12, 26, 44]) {
+    const sim = new Simulation({ ...DEFAULT_SETTINGS, vehicleCount });
+    const blocker = sim.blocker;
+    for (let round = 0; round < 3; round++) {
+      sim.release();
+      for (let i = 0; i < 1800 && sim.phase !== "clear"; i++) sim.step(0.1);
+      assert.equal(sim.phase, "clear");
+      advance(sim, 20);
+      const time = sim.time;
+      const samples = sim.samples.length;
+      sim.occupy();
+      assert.equal(sim.phase, "returning");
+      assert.equal(sim.blocker.lane, 1);
+      for (let i = 0; i < 1800 && sim.phase !== "blocking"; i++) {
+        sim.step(0.1);
+        for (const vehicle of sim.vehicles)
+          assert.ok((sim.leader(vehicle)?.gap ?? Infinity) >= 1 - 1e-9);
+      }
+      assert.equal(sim.phase, "blocking");
+      sim.step(0.1);
+      assert.equal(sim.blocker, blocker);
+      assert.equal(sim.blocker.lane, 0);
+      assert.equal(sim.blocker.desiredSpeed * 3.6, sim.settings.blockerSpeed);
+      assert.equal(sim.vehicles.length, vehicleCount);
+      assert.ok(sim.time > time);
+      assert.ok(sim.samples.length >= Math.min(samples, 240));
+    }
+  }
+});
+
+test("lane requests can be reversed while a merge is pending", () => {
+  const sim = new Simulation();
+  sim.release();
+  assert.equal(sim.phase, "overtaking");
+  sim.occupy();
+  assert.equal(sim.phase, "blocking");
+  assert.equal(sim.time, 0);
+  sim.release();
+  for (let i = 0; i < 600 && sim.phase !== "clear"; i++) sim.step(0.1);
+  assert.equal(sim.phase, "clear");
+  sim.occupy();
+  assert.equal(sim.phase, "returning");
+  sim.release();
+  assert.equal(sim.phase, "clear");
+  assert.equal(sim.blocker.lane, 1);
+});
