@@ -18,6 +18,48 @@ export interface Vehicle {
   kind: "car" | "truck" | "blocker";
   braking: boolean;
   color: string;
+  blockedFor: number;
+  signalUntil: number;
+  nextSignal: number;
+  passTarget: number | null;
+  crashed: boolean;
+}
+
+export interface ArcadeOptions {
+  undertaking: boolean;
+  signals: boolean;
+  roadRage: boolean;
+  spyMode: boolean;
+}
+
+export const DEFAULT_ARCADE: ArcadeOptions = {
+  undertaking: false,
+  signals: false,
+  roadRage: false,
+  spyMode: false,
+};
+
+export interface TrafficEvent {
+  id: number;
+  time: number;
+  kind: "horn" | "undertake" | "return" | "ram" | "shot" | "crash";
+  actorId: number;
+  targetId: number;
+}
+
+export interface Attack {
+  actorId: number;
+  kind: "ram" | "gun";
+  startedAt: number;
+  nextShot: number;
+}
+
+export interface Crash {
+  time: number;
+  x: number;
+  lane: number;
+  speed: number;
+  cause: Attack["kind"];
 }
 
 export interface Sample {
@@ -52,10 +94,18 @@ export class Simulation {
   releaseTime: number | null = null;
   clearedTime: number | null = null;
   samples: Sample[] = [];
+  arcade: ArcadeOptions;
+  events: TrafficEvent[] = [];
+  attack: Attack | null = null;
+  crash: Crash | null = null;
   private nextSample = 0;
+  private nextBehaviorCheck = 1;
+  private randomState = 42;
+  private eventId = 0;
 
-  constructor(settings: Settings = DEFAULT_SETTINGS) {
+  constructor(settings: Settings = DEFAULT_SETTINGS, arcade: ArcadeOptions = DEFAULT_ARCADE) {
     this.settings = { ...settings };
+    this.arcade = { ...arcade };
     this.reset();
   }
 
@@ -63,8 +113,8 @@ export class Simulation {
     return this.vehicles[0];
   }
 
-  get phase(): "blocking" | "overtaking" | "clear" {
-    return this.clearedTime !== null
+  get phase(): "blocking" | "overtaking" | "clear" | "crashed" {
+    return this.crash ? "crashed" : this.clearedTime !== null
       ? "clear"
       : this.releaseTime !== null
         ? "overtaking"
@@ -77,6 +127,12 @@ export class Simulation {
     this.clearedTime = null;
     this.samples = [];
     this.nextSample = 0;
+    this.nextBehaviorCheck = 1;
+    this.randomState = 42;
+    this.eventId = 0;
+    this.events = [];
+    this.attack = null;
+    this.crash = null;
     this.vehicles = [];
     const add = (
       x: number,
@@ -106,6 +162,11 @@ export class Simulation {
         cooldown: 3 + (id % 4),
         braking: false,
         color: COLORS[id % COLORS.length],
+        blockedFor: 0,
+        signalUntil: 0,
+        nextSignal: 0,
+        passTarget: null,
+        crashed: false,
       });
     };
     add(660, 0, "blocker", false);
@@ -135,7 +196,74 @@ export class Simulation {
   }
 
   release(): void {
-    if (this.phase === "blocking") this.releaseTime = this.time;
+    if (this.phase === "blocking") {
+      this.releaseTime = this.time;
+      this.attack = null;
+    }
+  }
+
+  setArcade(options: ArcadeOptions): void {
+    this.arcade = { ...options };
+    if ((this.attack?.kind === "ram" && !options.roadRage) ||
+        (this.attack?.kind === "gun" && !options.spyMode)) this.attack = null;
+    if (!options.signals) for (const vehicle of this.vehicles) vehicle.signalUntil = 0;
+  }
+
+  private random(): number {
+    this.randomState = (Math.imul(this.randomState, 1664525) + 1013904223) >>> 0;
+    return this.randomState / 4294967296;
+  }
+
+  private emit(kind: TrafficEvent["kind"], actorId: number, targetId = 0): void {
+    this.events.push({ id: ++this.eventId, time: this.time, kind, actorId, targetId });
+    if (this.events.length > 40) this.events.shift();
+  }
+
+  private crashBlocker(): void {
+    if (!this.attack || this.crash) return;
+    this.crash = { time: this.time, x: this.blocker.x, lane: this.blocker.visualLane, speed: this.blocker.speed, cause: this.attack.kind };
+    this.blocker.crashed = true;
+    this.blocker.speed = 0;
+    this.emit("crash", this.attack.actorId);
+    this.attack = null;
+  }
+
+  private advanceArcade(dt: number): void {
+    const check = this.time >= this.nextBehaviorCheck;
+    if (check) this.nextBehaviorCheck += 1;
+    for (const vehicle of this.vehicles) {
+      if (vehicle.kind !== "car" || vehicle.crashed) continue;
+      const front = this.leader(vehicle);
+      const blocked = front && front.gap < 100 && vehicle.desiredSpeed - vehicle.speed > kmh(5);
+      vehicle.blockedFor = blocked ? vehicle.blockedFor + dt : Math.max(0, vehicle.blockedFor - dt * 2);
+      if (!check || !blocked) continue;
+      if (this.arcade.signals && vehicle.blockedFor > 3 && this.time >= vehicle.nextSignal && this.random() < 0.45) {
+        vehicle.signalUntil = this.time + 1.4;
+        vehicle.nextSignal = this.time + 5 + this.random() * 5;
+        this.emit("horn", vehicle.id, front.vehicle.id);
+      }
+      if (!this.attack && this.phase === "blocking" && vehicle.lane === 0 && front.vehicle.kind === "blocker" && vehicle.blockedFor > 9 && (this.arcade.roadRage || this.arcade.spyMode) && this.random() < 0.5) {
+        const kind = this.arcade.spyMode && (!this.arcade.roadRage || this.random() < 0.5) ? "gun" : "ram";
+        this.attack = { actorId: vehicle.id, kind, startedAt: this.time, nextShot: this.time };
+        if (kind === "ram") this.emit("ram", vehicle.id);
+      }
+      if (this.arcade.undertaking && !this.attack && vehicle.lane === 0 && vehicle.cooldown <= 0 && vehicle.passTarget === null && vehicle.blockedFor > 4 && this.random() < 0.35 && this.canMerge(vehicle, 1)) {
+        const right = this.leader(vehicle, 1);
+        if (!right || right.gap > front.gap + 15) {
+          vehicle.passTarget = front.vehicle.id;
+          vehicle.lane = 1;
+          vehicle.cooldown = 2;
+          this.emit("undertake", vehicle.id, front.vehicle.id);
+        }
+      }
+    }
+    if (this.attack?.kind === "gun") {
+      if (this.time >= this.attack.nextShot) {
+        this.emit("shot", this.attack.actorId);
+        this.attack.nextShot = this.time + 0.22;
+      }
+      if (this.time - this.attack.startedAt >= 2.4) this.crashBlocker();
+    }
   }
 
   private distance(from: number, to: number): number {
@@ -148,7 +276,7 @@ export class Simulation {
   ): { vehicle: Vehicle; gap: number } | null {
     let result: { vehicle: Vehicle; gap: number } | null = null;
     for (const other of this.vehicles) {
-      if (other.id === vehicle.id || other.lane !== lane) continue;
+      if (other.crashed || other.id === vehicle.id || other.lane !== lane) continue;
       const gap =
         this.distance(vehicle.x, other.x) - (vehicle.length + other.length) / 2;
       if (!result || gap < result.gap) result = { vehicle: other, gap };
@@ -169,7 +297,7 @@ export class Simulation {
     )
       return false;
     for (const rear of this.vehicles) {
-      if (rear.id === vehicle.id || rear.lane !== lane) continue;
+      if (rear.crashed || rear.id === vehicle.id || rear.lane !== lane) continue;
       const gap =
         this.distance(rear.x, vehicle.x) - (vehicle.length + rear.length) / 2;
       if (
@@ -210,11 +338,25 @@ export class Simulation {
 
   private advance(dt: number): void {
     this.time += dt;
+    this.advanceArcade(dt);
     for (const vehicle of this.vehicles) {
+      if (vehicle.crashed) continue;
       vehicle.cooldown -= dt;
       vehicle.desiredSpeed = this.desired(vehicle);
+      if (this.attack && (vehicle.id === this.attack.actorId || vehicle.kind === "blocker")) continue;
       if (vehicle.cooldown > 0) continue;
       if (vehicle.kind === "blocker" && this.phase === "blocking") continue;
+      if (vehicle.passTarget !== null) {
+        const target = this.vehicles.find(other => other.id === vehicle.passTarget);
+        const passed = !target || target.crashed || this.distance(target.x, vehicle.x) < ROAD_LENGTH / 2;
+        if (passed && this.canMerge(vehicle, 0)) {
+          vehicle.lane = 0;
+          vehicle.cooldown = 5;
+          this.emit("return", vehicle.id, vehicle.passTarget);
+          vehicle.passTarget = null;
+        }
+        continue;
+      }
       const front = this.leader(vehicle);
       if (
         vehicle.lane === 1 &&
@@ -242,13 +384,16 @@ export class Simulation {
       }
     }
 
-    const updates = this.vehicles.map((vehicle) => {
+    const updates = this.vehicles.filter(vehicle => !vehicle.crashed).map((vehicle) => {
       let front = this.leader(vehicle);
+      const ramming = this.attack?.kind === "ram" && this.attack.actorId === vehicle.id && front?.vehicle.kind === "blocker";
+      if (ramming) front = null;
       // Treat nearby left-lane traffic as a virtual leader: no passing on the right.
       if (vehicle.lane === 1) {
         const left = this.leader(vehicle, 0);
         if (
           left &&
+          vehicle.passTarget === null &&
           left.gap < 100 &&
           left.vehicle.speed < vehicle.speed + 1 &&
           (!front || left.gap < front.gap)
@@ -263,7 +408,7 @@ export class Simulation {
             front = { vehicle: this.blocker, gap };
         }
       }
-      const desired = Math.max(kmh(10), vehicle.desiredSpeed);
+      const desired = Math.max(kmh(10), ramming ? this.blocker.speed + kmh(35) : vehicle.desiredSpeed);
       let acceleration = 1.8 * (1 - (vehicle.speed / desired) ** 4);
       if (front) {
         const closing = vehicle.speed - front.vehicle.speed;
@@ -283,7 +428,7 @@ export class Simulation {
       acceleration = Math.max(-8, Math.min(1.8, acceleration));
       let speed = Math.max(0, vehicle.speed + acceleration * dt);
       const actualFront = this.leader(vehicle);
-      if (actualFront)
+      if (actualFront && !ramming)
         speed = Math.min(speed, Math.max(0, (actualFront.gap - 1) / dt));
       return { vehicle, speed, acceleration };
     });
@@ -294,21 +439,30 @@ export class Simulation {
       vehicle.visualLane +=
         (vehicle.lane - vehicle.visualLane) * Math.min(1, dt * 2.2);
     }
+    if (this.attack?.kind === "ram") {
+      const actor = this.vehicles.find(vehicle => vehicle.id === this.attack!.actorId)!;
+      const gap = this.distance(actor.x, this.blocker.x) - (actor.length + this.blocker.length) / 2;
+      if (gap <= 1.5) {
+        actor.speed = Math.min(actor.speed, this.blocker.speed);
+        this.crashBlocker();
+      }
+    }
     if (this.time >= this.nextSample) this.recordSample();
   }
 
   get metrics(): { speed: number; queue: number; flow: number } {
+    const active = this.vehicles.filter(vehicle => !vehicle.crashed);
     const speed =
-      this.vehicles.reduce((sum, vehicle) => sum + vehicle.speed * 3.6, 0) /
-      this.vehicles.length;
-    const queue = this.vehicles.filter(
+      active.reduce((sum, vehicle) => sum + vehicle.speed * 3.6, 0) /
+      Math.max(1, active.length);
+    const queue = active.filter(
       (vehicle) =>
         vehicle.kind === "car" && vehicle.desiredSpeed - vehicle.speed > kmh(8),
     ).length;
     return {
       speed,
       queue,
-      flow: (speed * this.vehicles.length) / (ROAD_LENGTH / 1000),
+      flow: (speed * active.length) / (ROAD_LENGTH / 1000),
     };
   }
 
