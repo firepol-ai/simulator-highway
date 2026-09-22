@@ -206,7 +206,7 @@ export class RoadRenderer {
       ctx.fillStyle = "#fff5cc";
       ctx.fillRect(x + length / 2 - 1, y - width / 2 + 1, 1, 2);
       ctx.fillRect(x + length / 2 - 1, y + width / 2 - 3, 1, 2);
-      if (vehicle.signalUntil > sim.time) {
+      if (vehicle.lane === 0 && vehicle.signalUntil > sim.time) {
         const glow = 0.15 + (Math.sin(sim.time * 9) + 1) * 0.22;
         ctx.fillStyle = `rgba(255,245,181,${glow})`;
         ctx.beginPath();

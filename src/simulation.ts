@@ -254,7 +254,7 @@ export class Simulation {
     this.attack = null;
   }
 
-  private advanceArcade(dt: number): void {
+  private advanceArcade(dt: number): boolean {
     if (this.attack) {
       const actor = this.vehicles.find(
         (vehicle) => vehicle.id === this.attack!.actorId,
@@ -278,16 +278,6 @@ export class Simulation {
         ? vehicle.blockedFor + dt
         : Math.max(0, vehicle.blockedFor - dt * 2);
       if (!check || !blocked) continue;
-      if (
-        this.arcade.signals &&
-        vehicle.blockedFor > 3 &&
-        this.time >= vehicle.nextSignal &&
-        this.random() < 0.45
-      ) {
-        vehicle.signalUntil = this.time + 1.4;
-        vehicle.nextSignal = this.time + 5 + this.random() * 5;
-        this.emit("horn", vehicle.id, front.vehicle.id);
-      }
       if (
         !this.attack &&
         this.phase === "blocking" &&
@@ -320,7 +310,12 @@ export class Simulation {
         this.canMerge(vehicle, 1)
       ) {
         const right = this.leader(vehicle, 1);
-        if (!right || right.gap > front.gap + 15) {
+        // An impatient driver switches only when nearby right-lane traffic is
+        // at least about as fast as the slower car ahead (within 5 km/h).
+        const rightSpeed = right && right.gap < Math.max(120, vehicle.speed * 5)
+          ? right.vehicle.speed
+          : vehicle.desiredSpeed;
+        if (front.vehicle.speed <= rightSpeed + kmh(5) && (!right || right.gap > front.gap + 15)) {
           vehicle.passTarget = front.vehicle.id;
           vehicle.lane = 1;
           vehicle.cooldown = 2;
@@ -334,6 +329,19 @@ export class Simulation {
         this.attack.nextShot = this.time + 0.22;
       }
       if (this.time - this.attack.startedAt >= 2.4) this.crashBlocker();
+    }
+    return check;
+  }
+
+  private signalLeftLaneDrivers(): void {
+    if (!this.arcade.signals) return;
+    for (const vehicle of this.vehicles) {
+      if (vehicle.kind !== "car" || vehicle.crashed || vehicle.lane !== 0 || vehicle.visualLane > 0.1 || vehicle.blockedFor <= 3 || this.time < vehicle.nextSignal) continue;
+      const front = this.leader(vehicle);
+      if (!front || front.gap >= 100 || vehicle.desiredSpeed - vehicle.speed <= kmh(5) || this.random() >= 0.45) continue;
+      vehicle.signalUntil = this.time + 1.4;
+      vehicle.nextSignal = this.time + 5 + this.random() * 5;
+      this.emit("horn", vehicle.id, front.vehicle.id);
     }
   }
 
@@ -413,7 +421,7 @@ export class Simulation {
 
   private advance(dt: number): void {
     this.time += dt;
-    this.advanceArcade(dt);
+    const checkSignals = this.advanceArcade(dt);
     for (const vehicle of this.vehicles) {
       if (vehicle.crashed) continue;
       vehicle.cooldown -= dt;
@@ -429,11 +437,14 @@ export class Simulation {
         const target = this.vehicles.find(
           (other) => other.id === vehicle.passTarget,
         );
-        const passed =
-          !target ||
-          target.crashed ||
-          target.lane === 1 ||
-          this.distance(target.x, vehicle.x) < ROAD_LENGTH / 2;
+        // If the target leaves the left lane, stop the attempt without claiming
+        // a successful pass. Otherwise return only after fully clearing it.
+        if (!target || target.crashed || target.lane !== 0) {
+          vehicle.passTarget = null;
+          continue;
+        }
+        const ahead = this.distance(target.x, vehicle.x);
+        const passed = ahead > (vehicle.length + target.length) / 2 + 8 && ahead < ROAD_LENGTH / 2;
         if (passed && this.canMerge(vehicle, 0)) {
           vehicle.lane = 0;
           vehicle.cooldown = 5;
@@ -468,6 +479,11 @@ export class Simulation {
         }
       }
     }
+
+    for (const vehicle of this.vehicles) {
+      if (vehicle.lane !== 0 || vehicle.crashed) vehicle.signalUntil = 0;
+    }
+    if (checkSignals) this.signalLeftLaneDrivers();
 
     const updates = this.vehicles
       .filter((vehicle) => !vehicle.crashed)
