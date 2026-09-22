@@ -374,6 +374,91 @@ input.amber-range::-moz-range-thumb {
   flex-direction: column;
   gap: 15px;
 }
+.arcade-panel {
+  padding: 19px;
+  background: #faf8f0;
+  border-color: #e5dfce;
+}
+.arcade-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+.arcade-heading .eyebrow {
+  font-size: 8px;
+  letter-spacing: 1.2px;
+  color: #a28a60;
+}
+.arcade-heading h2 {
+  margin-top: 7px;
+  font-size: 14px;
+}
+.arcade-intro {
+  font-size: 10px;
+  color: #928774;
+  line-height: 1.7;
+  margin: 10px 0 16px;
+}
+.arcade-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.arcade-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e8e2d3;
+  border-radius: 7px;
+  background: #fffdf7;
+  cursor: pointer;
+}
+.arcade-option strong {
+  font-size: 10px;
+  font-weight: 600;
+  display: block;
+}
+.arcade-option small {
+  display: block;
+  font-size: 9px;
+  line-height: 1.6;
+  color: #99907d;
+  margin-top: 4px;
+}
+.arcade-option .toggle-label {
+  flex-shrink: 0;
+}
+.arcade-status {
+  font-size: 10px;
+  color: #9c7749;
+  line-height: 1.6;
+  margin: 14px 0 0;
+  min-height: 16px;
+}
+.road-badge.is-crashed {
+  color: #a15d43;
+  background: #fbebdf;
+  border-color: #dfbb9b;
+}
+.is-crashed .badge-dot {
+  background: #b56743;
+}
+@media (max-width: 800px) {
+  .arcade-options {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  .arcade-panel {
+    padding: 15px;
+  }
+  .sound-control {
+    white-space: nowrap;
+  }
+}
 .simulation-panel {
   overflow: hidden;
 }
@@ -583,6 +668,20 @@ input.amber-range::-moz-range-thumb {
   place-items: center;
   width: 35px;
   flex-shrink: 0;
+}
+.intervention-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.intervention-actions [hidden] {
+  display: none;
+}
+.intervention.has-wreck {
+  flex-wrap: wrap;
+}
+.intervention.has-wreck .intervention-actions {
+  margin-left: auto;
 }
 .intervention-copy {
   flex: 1;
@@ -1064,5 +1163,16 @@ dialog p {
   }
 }
 
-.footer-links { display: flex; align-items: center; gap: 18px; }
-@media (max-width: 600px) { footer { flex-wrap: wrap; } .footer-links { margin-left: auto; } }
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+@media (max-width: 600px) {
+  footer {
+    flex-wrap: wrap;
+  }
+  .footer-links {
+    margin-left: auto;
+  }
+}

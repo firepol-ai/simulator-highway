@@ -20,10 +20,26 @@ Open the local URL printed by Vite, normally `http://localhost:5173`.
 - Adjust the speed limit, faster drivers’ desired speed (60–300 km/h), vehicle count, and blocking driver’s speed (40–300 km/h). Driver speeds are independent of the speed limit; defaults are 135 km/h for faster drivers and 110 km/h for the blocker. Each change restarts the scene.
 - Let traffic develop for 30–60 simulated seconds. Use 2× or 5× playback to speed up the experiment.
 - Select **Clear the left lane**. The orange car accelerates, waits for a safe gap, and merges right. The nearby right-lane follower allows extra space for the signaled merge.
+- The button then becomes **Occupy the left lane**. Select it to send the same driver back left through an available gap and resume its blocking speed, without resetting traffic or the chart. You can reverse either request while the driver is still waiting to change lanes.
 - Compare average speed and the number of held-back vehicles. The chart marks the release time; recovery is gradual and depends on density and other slow vehicles.
 - Pause, restart, or hide individual speed labels at any time.
 
 ## Model and limits
+
+### Optional arcade behavior
+
+The **A little less civilised** panel adds four independent switches, all off by default:
+
+- **Random right-side passing:** some held-back left-lane drivers try the right lane when nearby traffic there is faster or nearly as fast (within 5 km/h). They use shorter following and merge gaps, then move back left only after fully clearing the car they were following. Available space and slower right-lane traffic affect whether a pass can succeed.
+- **Horns & flashing lights:** frustrated drivers in the left lane honk and flash at the car ahead in that lane. Drivers cruising on the right are left alone. The light beams and horn rings work even with sound muted.
+- **Crazy road rage:** after waiting behind the blocker, the following car may accelerate into it. The blocker skids off-road with sparks, smoke, and a wreck.
+- **007 mode:** the car directly behind the blocker may fire a short machine-gun burst before the blocker crashes off-road. When both crash modes are enabled, one is randomly selected for the encounter.
+
+Enable **Sound effects** for synthesized horns, gunfire, impact, and skid sounds. Audio starts only after opting in. Muting, pausing, resetting, or hiding the tab stops current sounds. No audio files or external sound services are used.
+
+Behavior switches take effect without restarting. Disabling a crash mode cancels its pending attack; releasing the blocker also cancels an attack. Right-side passes already underway finish their lane maneuver, unless their target leaves the left lane. After a crash, **Spawn new blocker** inserts another driver into an available left-lane gap while keeping the wrecks, simulation time, and chart history. If there is no suitable gap, let traffic move and try again. Reset clears events, impatience, and all wrecks while preserving the selected switches. Random choices use a repeatable seed for comparisons. These are fictional arcade effects, not a model of crash or weapon physics. Wrecks are excluded from active traffic metrics, and crashes remain marked on the speed chart.
+
+### Traffic model
 
 Vehicles follow a simplified Intelligent Driver Model, with desired speeds, acceleration limits, closing-speed-dependent headways, and gap checks for lane changes. Faster drivers overtake left and return right. A virtual leader discourages passing slower left-lane traffic on the right. The blocking driver remains left until released.
 
@@ -39,6 +55,8 @@ npm run build
 ```
 
 To use an existing Chromium installation, set `CHROMIUM_PATH` when running the browser tests, for example `CHROMIUM_PATH=/usr/bin/chromium-browser npm run test:e2e`.
+
+For an isolated worktree, set `PLAYWRIGHT_PORT` to an unused port, for example `PLAYWRIGHT_PORT=5174 CHROMIUM_PATH=/usr/bin/chromium-browser npm run test:e2e`. Browser tests are scoped to `tests/`, so they do not discover nested worktrees. This project has no runtime environment files or database to copy.
 
 The build produces a static site in `dist/`. `npm run preview` serves it locally. Fonts load from Google Fonts with local sans-serif fallbacks. No backend or API keys are needed.
 
