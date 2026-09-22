@@ -31,15 +31,15 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         <div class="section-title"><h2>${icon("sliders", 17)} Set the scene</h2><span class="small-label">01</span></div>
         <p class="section-description">Small changes. Different traffic.</p>
         <div class="setting">
-          <label for="speed-limit">Speed limit <span class="limit-sign" id="speed-sign">80</span></label>
-          <div class="range-value"><output id="speed-limit-value" for="speed-limit">80</output><span>km/h</span></div>
-          <input id="speed-limit" type="range" min="60" max="120" step="10" value="80" />
+          <label for="speed-limit">Speed limit <span class="limit-sign" id="speed-sign">120</span></label>
+          <div class="range-value"><output id="speed-limit-value" for="speed-limit">120</output><span>km/h</span></div>
+          <input id="speed-limit" type="range" min="60" max="120" step="10" value="120" />
           <div class="range-ends"><span>60 km/h</span><span>120 km/h</span></div>
         </div>
         <div class="setting">
           <label for="faster-speed">Faster drivers <span class="setting-dot green"></span></label>
-          <div class="range-value"><output id="faster-speed-value" for="faster-speed">95</output><span>km/h target speed</span></div>
-          <input id="faster-speed" type="range" min="60" max="300" step="5" value="95" />
+          <div class="range-value"><output id="faster-speed-value" for="faster-speed">135</output><span>km/h target speed</span></div>
+          <input id="faster-speed" type="range" min="60" max="300" step="5" value="135" />
           <div class="range-ends"><span>60 km/h</span><span>300 km/h</span></div>
         </div>
         <div class="setting">
@@ -52,8 +52,8 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
           <div class="blocker-title"><span class="setting-dot amber"></span><h3>The left-lane blocker</h3></div>
           <p>One driver stays in the overtaking lane. Faster cars behind have to adapt.</p>
           <label for="blocker-speed">Driver’s speed</label>
-          <div class="range-value"><output id="blocker-speed-value" for="blocker-speed">75</output><span>km/h</span><span class="below-limit" id="below-limit">5 below limit</span></div>
-          <input id="blocker-speed" class="amber-range" type="range" min="40" max="300" step="1" value="75" />
+          <div class="range-value"><output id="blocker-speed-value" for="blocker-speed">110</output><span>km/h</span><span class="below-limit" id="below-limit">10 below limit</span></div>
+          <input id="blocker-speed" class="amber-range" type="range" min="40" max="300" step="1" value="110" />
           <div class="range-ends"><span>40 km/h</span><span>300 km/h</span></div>
         </div>
         <p class="settings-note">Changing a setting restarts the experiment.</p>
@@ -73,7 +73,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         <section class="chart-panel panel"><div class="chart-header"><h2>Every slowdown tells a story.</h2><div class="chart-legend"><span><i></i>Average speed</span><span><i class="dashed"></i>Speed limit</span></div></div><canvas id="speed-chart" role="img" aria-label="Average traffic speed over the last two simulated minutes. A vertical marker shows when the blocker was released."></canvas><div class="chart-footer"><span>SPEED (KM/H)</span><span>SIMULATED TIME →</span></div></section>
       </div>
     </div>
-    <footer><span><span class="footer-dot"></span> A little perspective on the road we share.</span><button class="text-button about-trigger">How it works ${icon("arrow", 14)}</button></footer>
+    <footer><span><span class="footer-dot"></span> A little perspective on the road we share.</span><div class="footer-links"><a class="text-button" href="https://github.com/firepol-ai/simulator-highway" target="_blank" rel="noopener noreferrer">Source on GitHub ↗</a><button class="text-button about-trigger">How it works ${icon("arrow", 14)}</button></div></footer>
   </main>
   <dialog id="about-dialog"><button id="close-about" class="dialog-close" aria-label="Close explanation">×</button><div class="eyebrow">BEHIND THE EXPERIMENT</div><h2>Traffic is a chain reaction.</h2><p>Each car accelerates toward its desired speed and brakes according to its distance and closing speed to the car ahead. Faster drivers use the left lane to overtake, then return right when there is room. Right-lane cars also respond to slower traffic ahead on the left to discourage passing on the right.</p><p>The orange driver deliberately stays left until you select <strong>Clear the left lane</strong>. It then finishes the pass at a target no lower than its current setting or the faster drivers’ target, waits for a safe gap, and merges right. Both driver controls allow targets up to 300 km/h. Recovery takes time as the following cars accelerate.</p><p>This is an illustrative, deterministic car-following model on a repeating 1.2 km road, not a calibrated traffic forecast or a complete implementation of traffic law. Cars are enlarged for visibility. “Faster drivers” can exceed your selected limit to represent that behavior, not recommend it.</p><p><strong>Try it:</strong> run the default scene for 30–60 simulated seconds, release the driver, and compare the speed trace. Higher density and a slower blocker make the effect more noticeable. Other slow vehicles and dense traffic can still limit recovery.</p><p class="dialog-note">Settings restart the scene. Playback speed changes simulated time only. Traffic flow is a density-based estimate, not a count at a roadside detector.</p></dialog>
 `;

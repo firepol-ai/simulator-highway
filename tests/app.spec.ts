@@ -52,7 +52,7 @@ test("settings support independent driver speeds up to 300 and reset the experim
   await page.getByRole("slider", { name: "Speed limit" }).fill("60");
   await expect(page.locator("#speed-limit-value")).toHaveText("60");
   await expect(page.locator("#blocker-speed")).toHaveAttribute("max", "300");
-  await expect(page.locator("#blocker-speed-value")).toHaveText("75");
+  await expect(page.locator("#blocker-speed-value")).toHaveText("110");
   await page.getByRole("slider", { name: "Driver’s speed" }).fill("55");
   await expect(page.locator("#below-limit")).toHaveText("5 below limit");
   await page.getByRole("slider", { name: "Traffic density" }).fill("44");

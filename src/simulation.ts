@@ -27,9 +27,9 @@ export interface Sample {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  speedLimit: 80,
-  blockerSpeed: 75,
-  fasterSpeed: 95,
+  speedLimit: 120,
+  blockerSpeed: 110,
+  fasterSpeed: 135,
   vehicleCount: 26,
 };
 
