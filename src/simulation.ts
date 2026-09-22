@@ -161,7 +161,7 @@ export class Simulation {
         kind === "blocker"
           ? this.settings.blockerSpeed
           : kind === "truck"
-            ? this.settings.rightLaneSpeed ?? this.settings.speedLimit - 12
+            ? (this.settings.rightLaneSpeed ?? this.settings.speedLimit - 12)
             : fast
               ? this.settings.fasterSpeed
               : this.settings.speedLimit - (id % 3) * 2;
@@ -192,16 +192,26 @@ export class Simulation {
     const rightCount = this.settings.vehicleCount - 2 - leftCount;
     for (let i = 0; i < leftCount; i++)
       add(
-        (blockerX - 60 - i * ((this.roadLength - 150) / leftCount) + this.roadLength) % this.roadLength,
+        (blockerX -
+          60 -
+          i * ((this.roadLength - 150) / leftCount) +
+          this.roadLength) %
+          this.roadLength,
         0,
         "car",
         true,
       );
     for (let i = 0; i < rightCount; i++)
       add(
-        (blockerX - 70 - i * ((this.roadLength - 150) / rightCount) + this.roadLength) % this.roadLength,
+        (blockerX -
+          70 -
+          i * ((this.roadLength - 150) / rightCount) +
+          this.roadLength) %
+          this.roadLength,
         1,
-        (i === 5 || (this.roadLength > ROAD_LENGTH && i % 11 === 5)) ? "truck" : "car",
+        i === 5 || (this.roadLength > ROAD_LENGTH && i % 11 === 5)
+          ? "truck"
+          : "car",
         i % 3 === 0,
       );
     this.recordSample();
@@ -516,7 +526,8 @@ export class Simulation {
             ? Math.max(speedLimit, blockerSpeed, fasterSpeed)
             : speedLimit,
       );
-    if (vehicle.kind === "truck") return kmh(this.settings.rightLaneSpeed ?? speedLimit - 12);
+    if (vehicle.kind === "truck")
+      return kmh(this.settings.rightLaneSpeed ?? speedLimit - 12);
     return kmh(vehicle.fast ? fasterSpeed : speedLimit - (vehicle.id % 3) * 2);
   }
 

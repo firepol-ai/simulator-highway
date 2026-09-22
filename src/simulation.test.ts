@@ -515,3 +515,55 @@ test("lane requests can be reversed while a merge is pending", () => {
   assert.equal(sim.phase, "clear");
   assert.equal(sim.blocker.lane, 1);
 });
+
+test("six kilometre traffic stays separated and the blocker can clear and return", () => {
+  const sim = new Simulation(
+    { ...DEFAULT_SETTINGS, vehicleCount: 220 },
+    DEFAULT_ARCADE,
+    6000,
+  );
+  assert.equal(sim.vehicles.length, 220);
+  assert.ok(sim.vehicles.some((v) => v.x > 5000));
+  advance(sim, 30);
+  sim.release();
+  advance(sim, 120);
+  assert.equal(sim.phase, "clear");
+  sim.occupy();
+  advance(sim, 90);
+  assert.equal(sim.phase, "blocking");
+  for (const lane of [0, 1]) {
+    const cars = sim.vehicles
+      .filter((v) => v.lane === lane)
+      .sort((a, b) => a.x - b.x);
+    for (let i = 0; i < cars.length; i++) {
+      const car = cars[i],
+        ahead = cars[(i + 1) % cars.length];
+      assert.ok(car.x >= 0 && car.x < 6000 && Number.isFinite(car.speed));
+      assert.ok(
+        (ahead.x - car.x + 6000) % 6000 >= (ahead.length + car.length) / 2,
+      );
+    }
+  }
+  assert.equal(sim.metrics.flow, (sim.metrics.speed * sim.vehicles.length) / 6);
+});
+
+test("right-lane slow-driver speed and 300 km/h general limit are independent", () => {
+  const sim = new Simulation({
+    ...DEFAULT_SETTINGS,
+    speedLimit: 300,
+    rightLaneSpeed: 70,
+    fasterSpeed: 300,
+  });
+  const trucks = sim.vehicles.filter((v) => v.kind === "truck");
+  assert.ok(trucks.length > 0);
+  assert.ok(trucks.every((v) => Math.abs(v.speed * 3.6 - 70) < 0.001));
+  advance(sim, 60);
+  assert.ok(trucks.every((v) => v.speed * 3.6 <= 70.001));
+  assert.equal(sim.settings.speedLimit, 300);
+  sim.configure({ ...sim.settings, rightLaneSpeed: 300 });
+  assert.ok(
+    sim.vehicles
+      .filter((v) => v.kind === "truck")
+      .every((v) => Math.abs(v.speed * 3.6 - 300) < 0.001),
+  );
+});

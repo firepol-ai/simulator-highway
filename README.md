@@ -1,6 +1,6 @@
 # Highway Observatory
 
-A top-down, interactive highway simulation built with HTML, TypeScript, Canvas 2D, and Vite. Start with an 120 km/h limit and a driver holding the left lane at 110 km/h. Watch traffic build up, then let that driver finish overtaking and return right.
+A top-down, interactive highway simulation built with HTML, TypeScript, Canvas 2D, and Vite. Start with a 120 km/h limit and a driver holding the left lane at 110 km/h. Watch traffic build up, then let that driver finish overtaking and return right.
 
 **[Play the simulator online](https://firepol-ai.github.io/simulator-highway/)** — no installation needed.
 
@@ -17,7 +17,8 @@ Open the local URL printed by Vite, normally `http://localhost:5173`.
 
 ## Experiment
 
-- Adjust the speed limit, faster drivers’ desired speed (60–300 km/h), vehicle count, and blocking driver’s speed (40–300 km/h). Driver speeds are independent of the speed limit; defaults are 135 km/h for faster drivers and 110 km/h for the blocker. Each change restarts the scene.
+- Switch to **Winding road** for a full-window 6 km circuit with alternating bends and a narrower road. Its **Controls** panel includes the same settings and arcade switches. The circuit uses five times as many vehicles (60–220) to preserve density. Each mode keeps its own state and pauses while you use the other. Switch back with **Back to straight road**; Escape closes the controls first, then returns to the straight view.
+- Adjust the speed limit (60–300 km/h), right-lane slow drivers’ desired speed (40–300 km/h), faster drivers’ desired speed (60–300 km/h), vehicle count, and blocking driver’s speed (40–300 km/h). Driver speeds are independent of the speed limit; defaults are 135 km/h for faster drivers and 110 km/h for the blocker. Each change restarts the scene.
 - Let traffic develop for 30–60 simulated seconds. Use 2× or 5× playback to speed up the experiment.
 - Select **Clear the left lane**. The orange car accelerates, waits for a safe gap, and merges right. The nearby right-lane follower allows extra space for the signaled merge.
 - The button then becomes **Occupy the left lane**. Select it to send the same driver back left through an available gap and resume its blocking speed, without resetting traffic or the chart. You can reverse either request while the driver is still waiting to change lanes.
@@ -43,7 +44,7 @@ Behavior switches take effect without restarting. Disabling a crash mode cancels
 
 Vehicles follow a simplified Intelligent Driver Model, with desired speeds, acceleration limits, closing-speed-dependent headways, and gap checks for lane changes. Faster drivers overtake left and return right. A virtual leader discourages passing slower left-lane traffic on the right. The blocking driver remains left until released.
 
-The road is a deterministic, repeating 1.2 km loop with a fixed number of vehicles. Cars are enlarged for readability; the visualization is schematic. Narrow displays show a closer view that follows the blocker. This is an illustrative model, not a calibrated forecast or a complete implementation of traffic law. Desired speeds above the chosen limit represent driver behavior, not advice. Trucks target 12 km/h below the selected limit. Cars more than 8 km/h below their desired speed count as held back. Flow is estimated as vehicle density multiplied by average speed; it is not detector-measured throughput.
+The original road is a deterministic, repeating 1.2 km loop with a fixed number of vehicles. Cars are enlarged for readability; the visualization is schematic. In the original mode, narrow displays show a closer view that follows the blocker. Winding mode shows the entire 6 km circuit; its bends are a visual layout and do not impose cornering speed limits. Vehicle sizes are schematic and do not scale with simulated distance. This is an illustrative model, not a calibrated forecast or a complete implementation of traffic law. Desired speeds above the chosen limit represent driver behavior, not advice. The right-lane slow-driver control sets the trucks’ desired speed (108 km/h by default), independently of the general limit. Trucks can still be slowed by vehicles ahead. Cars more than 8 km/h below their desired speed count as held back. Flow is estimated as vehicle density multiplied by average speed; it is not detector-measured throughput.
 
 ## Validation
 
