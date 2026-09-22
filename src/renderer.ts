@@ -1,4 +1,4 @@
-import { ROAD_LENGTH, Simulation } from "./simulation.ts";
+import { ROAD_LENGTH, Simulation, type Crash } from "./simulation.ts";
 
 const roundedRect = (
   ctx: CanvasRenderingContext2D,
@@ -142,8 +142,11 @@ export class RoadRenderer {
       const x = ((vehicle.x - origin + ROAD_LENGTH) % ROAD_LENGTH) * scale;
       if (x > w + 20) continue;
       const y = center - 33 + vehicle.visualLane * 66;
-      if (vehicle.crashed && sim.crash) {
-        this.drawCrash(x, center - 33 + sim.crash.lane * 66, roadTop, sim);
+      if (vehicle.crashed) {
+        const wreck = sim.wrecks.find(
+          (crash) => crash.vehicleId === vehicle.id,
+        )!;
+        this.drawCrash(x, center - 33 + wreck.lane * 66, roadTop, sim, wreck);
         continue;
       }
       const length = vehicle.kind === "truck" ? 33 : 21;
@@ -313,9 +316,10 @@ export class RoadRenderer {
     y: number,
     roadTop: number,
     sim: Simulation,
+    crash: Crash,
   ): void {
     const ctx = this.ctx;
-    const age = sim.time - sim.crash!.time;
+    const age = sim.time - crash.time;
     const progress = Math.min(1, age / 2.4);
     const ease = 1 - (1 - progress) ** 2;
     const wreckX = Math.min(this.width - 20, x + ease * 35);
@@ -476,8 +480,8 @@ export function drawChart(canvas: HTMLCanvasElement, sim: Simulation): void {
     ctx.textAlign = x > width - 90 ? "right" : "left";
     ctx.fillText("Release", x + (x > width - 90 ? -5 : 5), top + 9);
   }
-  if (sim.crash && sim.crash.time >= start) {
-    const x = xFor(sim.crash.time);
+  for (const crash of sim.wrecks.filter((crash) => crash.time >= start)) {
+    const x = xFor(crash.time);
     ctx.strokeStyle = "#b66f50";
     ctx.setLineDash([3, 3]);
     ctx.beginPath();

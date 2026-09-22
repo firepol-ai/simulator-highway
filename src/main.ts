@@ -65,13 +65,13 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
           <div class="road-container"><canvas id="road" aria-label="Top-down animated highway: cars travel to the right, with the overtaking lane above the cruising lane. The blocking driver is orange." role="img"></canvas><div class="road-badge"><span class="badge-dot"></span> <span id="road-status">Left lane blocked</span></div><div class="road-scale">TOP VIEW <span>↗</span> 1.2 KM LOOP</div></div>
           <div class="playback-toolbar"><div class="playback-left"><button id="play-pause" class="icon-button" aria-label="Pause simulation">${icon("pause")}</button><button id="reset" class="icon-button" aria-label="Restart simulation">${icon("reset", 16)}</button><span class="toolbar-divider"></span><div class="playback-speeds" role="group" aria-label="Playback speed"><button data-speed="1" class="selected" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="5" aria-pressed="false">5×</button></div></div><label class="toggle-label"><input type="checkbox" id="show-speeds" checked /><span class="toggle"></span>Show speeds</label></div>
         </section>
-        <section class="intervention" aria-label="Clear the blocking driver"><div class="intervention-icon">${icon("road", 24)}</div><div class="intervention-copy"><h2 id="action-title">Give traffic a little room.</h2><p id="action-description">Let the orange car finish overtaking and move back to the right.</p></div><button id="release" class="primary-button">Clear the left lane ${icon("arrow")}</button></section>
+        <section class="intervention" aria-label="Clear the blocking driver"><div class="intervention-icon">${icon("road", 24)}</div><div class="intervention-copy"><h2 id="action-title">Give traffic a little room.</h2><p id="action-description">Let the orange car finish overtaking and move back to the right.</p></div><div class="intervention-actions"><button id="spawn-blocker" class="primary-button" hidden>Spawn new blocker</button><button id="release" class="primary-button">Clear the left lane ${icon("arrow")}</button></div></section>
         <section class="arcade-panel panel" aria-label="Arcade options">
           <div class="arcade-heading"><div><span class="eyebrow">A DETOUR FROM REALITY</span><h2>A little less civilised.</h2></div><label class="toggle-label sound-control"><input type="checkbox" id="sound-enabled" /><span class="toggle"></span>Sound effects</label></div>
           <p class="arcade-intro">Optional arcade antics. Drivers react after getting stuck behind slower traffic.</p>
           <div class="arcade-options">
-            <label class="arcade-option"><span><strong>Random right-side passing</strong><small>Slip past on the right, then return left.</small></span><span class="toggle-label"><input id="arcade-undertaking" type="checkbox" aria-label="Random right-side passing" /><span class="toggle"></span></span></label>
-            <label class="arcade-option"><span><strong>Horns & flashing lights</strong><small>Impatient drivers make themselves heard.</small></span><span class="toggle-label"><input id="arcade-signals" type="checkbox" aria-label="Horns and flashing lights" /><span class="toggle"></span></span></label>
+            <label class="arcade-option"><span><strong>Random right-side passing</strong><small>Pass slower left-lane traffic on the right, then cut back ahead.</small></span><span class="toggle-label"><input id="arcade-undertaking" type="checkbox" aria-label="Random right-side passing" /><span class="toggle"></span></span></label>
+            <label class="arcade-option"><span><strong>Horns & flashing lights</strong><small>Only impatient drivers in the left lane.</small></span><span class="toggle-label"><input id="arcade-signals" type="checkbox" aria-label="Horns and flashing lights" /><span class="toggle"></span></span></label>
             <label class="arcade-option"><span><strong>Crazy road rage</strong><small>A queued driver rams the blocker off-road.</small></span><span class="toggle-label"><input id="arcade-rage" type="checkbox" aria-label="Crazy road rage" /><span class="toggle"></span></span></label>
             <label class="arcade-option"><span><strong>007 mode</strong><small>Car-mounted machine guns. A cinematic exit.</small></span><span class="toggle-label"><input id="arcade-spy" type="checkbox" aria-label="007 mode" /><span class="toggle"></span></span></label>
           </div>
@@ -87,7 +87,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     </div>
     <footer><span><span class="footer-dot"></span> A little perspective on the road we share.</span><div class="footer-links"><a class="text-button" href="https://github.com/firepol-ai/simulator-highway" target="_blank" rel="noopener noreferrer">Source on GitHub ↗</a><button class="text-button about-trigger">How it works ${icon("arrow", 14)}</button></div></footer>
   </main>
-  <dialog id="about-dialog"><button id="close-about" class="dialog-close" aria-label="Close explanation">×</button><div class="eyebrow">BEHIND THE EXPERIMENT</div><h2>Traffic is a chain reaction.</h2><p>Each car accelerates toward its desired speed and brakes according to its distance and closing speed to the car ahead. Faster drivers use the left lane to overtake, then return right when there is room. Right-lane cars also respond to slower traffic ahead on the left to discourage passing on the right.</p><p>The orange driver deliberately stays left until you select <strong>Clear the left lane</strong>. It then finishes the pass at a target no lower than its current setting or the faster drivers’ target, waits for a safe gap, and merges right. Both driver controls allow targets up to 300 km/h. Recovery takes time as the following cars accelerate.</p><p>This is an illustrative, deterministic car-following model on a repeating 1.2 km road, not a calibrated traffic forecast or a complete implementation of traffic law. Cars are enlarged for visibility. “Faster drivers” can exceed your selected limit to represent that behavior, not recommend it.</p><p><strong>Try it:</strong> run the default scene for 30–60 simulated seconds, release the driver, and compare the speed trace. Higher density and a slower blocker make the effect more noticeable. Other slow vehicles and dense traffic can still limit recovery.</p><p><strong>Arcade options:</strong> enable random right-side passes, horns and headlight flashes, or fictional road-rage and 007 crash sequences. These start only after a driver is held up. Sound is opt-in. Releasing the blocker cancels an attack; restart clears the wreck. Behavior switches apply live, and reset keeps your selections.</p><p class="dialog-note">Settings restart the scene. Playback speed changes simulated time only. Traffic flow is a density-based estimate, not a count at a roadside detector.</p></dialog>
+  <dialog id="about-dialog"><button id="close-about" class="dialog-close" aria-label="Close explanation">×</button><div class="eyebrow">BEHIND THE EXPERIMENT</div><h2>Traffic is a chain reaction.</h2><p>Each car accelerates toward its desired speed and brakes according to its distance and closing speed to the car ahead. Faster drivers use the left lane to overtake, then return right when there is room. Right-lane cars also respond to slower traffic ahead on the left to discourage passing on the right.</p><p>The orange driver deliberately stays left until you select <strong>Clear the left lane</strong>. It then finishes the pass at a target no lower than its current setting or the faster drivers’ target, waits for a safe gap, and merges right. Both driver controls allow targets up to 300 km/h. Recovery takes time as the following cars accelerate.</p><p>This is an illustrative, deterministic car-following model on a repeating 1.2 km road, not a calibrated traffic forecast or a complete implementation of traffic law. Cars are enlarged for visibility. “Faster drivers” can exceed your selected limit to represent that behavior, not recommend it.</p><p><strong>Try it:</strong> run the default scene for 30–60 simulated seconds, release the driver, and compare the speed trace. Higher density and a slower blocker make the effect more noticeable. Other slow vehicles and dense traffic can still limit recovery.</p><p><strong>Arcade options:</strong> enable random right-side passes, horns and headlight flashes, or fictional road-rage and 007 crash sequences. These start only after a driver is held up. Sound is opt-in. Releasing the blocker cancels an attack. After a crash, Spawn new blocker adds another driver while keeping the wreck and history; restart clears the scene. Behavior switches apply live, and reset keeps your selections.</p><p class="dialog-note">Settings restart the scene. Playback speed changes simulated time only. Traffic flow is a density-based estimate, not a count at a roadside detector.</p></dialog>
 `;
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
@@ -108,6 +108,7 @@ const eventMessage = (event: TrafficEvent): string =>
     horn: `Car ${event.actorId} is honking and flashing its lights.`,
     undertake: `Car ${event.actorId} is passing on the right.`,
     return: `Car ${event.actorId} has returned to the left lane.`,
+    spawn: `A new blocker has joined the left lane. Existing wrecks remain off-road.`,
     ram: `Car ${event.actorId} has lost its patience. Brace for impact.`,
     shot: `Car ${event.actorId}: machine guns deployed.`,
     crash:
@@ -131,6 +132,8 @@ function updateUI(): void {
   if (phase !== previousPhase) {
     previousPhase = phase;
     const release = $<HTMLButtonElement>("#release");
+    $("#spawn-blocker").hidden = phase !== "crashed";
+    $(".intervention").classList.toggle("has-wreck", phase === "crashed");
     release.disabled = phase !== "blocking" && phase !== "crashed";
     release.innerHTML =
       phase === "crashed"
@@ -160,7 +163,7 @@ function updateUI(): void {
             : "Room to move again.";
     $("#action-description").textContent =
       phase === "crashed"
-        ? "The wreck is off the road. Remaining traffic can recover; restart for another scene."
+        ? "Leave the wreck in place and spawn another blocker, or restart the whole scene."
         : phase === "blocking"
           ? "Let the orange car finish overtaking and move back to the right."
           : phase === "overtaking"
@@ -252,6 +255,12 @@ $("#release").addEventListener("click", () => {
 });
 $("#show-speeds").addEventListener("change", (event) => {
   renderer.showSpeeds = (event.target as HTMLInputElement).checked;
+});
+$("#spawn-blocker").addEventListener("click", () => {
+  if (sim.spawnBlocker()) updateUI();
+  else
+    $("#action-description").textContent =
+      "No room in the left lane yet. Let traffic move, then try spawning again.";
 });
 document
   .querySelectorAll<HTMLInputElement>(".arcade-options input")

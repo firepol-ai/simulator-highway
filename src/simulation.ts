@@ -42,7 +42,7 @@ export const DEFAULT_ARCADE: ArcadeOptions = {
 export interface TrafficEvent {
   id: number;
   time: number;
-  kind: "horn" | "undertake" | "return" | "ram" | "shot" | "crash";
+  kind: "horn" | "undertake" | "return" | "ram" | "shot" | "crash" | "spawn";
   actorId: number;
   targetId: number;
 }
@@ -55,6 +55,7 @@ export interface Attack {
 }
 
 export interface Crash {
+  vehicleId: number;
   time: number;
   x: number;
   lane: number;
@@ -98,6 +99,7 @@ export class Simulation {
   events: TrafficEvent[] = [];
   attack: Attack | null = null;
   crash: Crash | null = null;
+  wrecks: Crash[] = [];
   private nextSample = 0;
   private nextBehaviorCheck = 1;
   private randomState = 42;
@@ -138,6 +140,7 @@ export class Simulation {
     this.events = [];
     this.attack = null;
     this.crash = null;
+    this.wrecks = [];
     this.vehicles = [];
     const add = (
       x: number,
@@ -207,6 +210,75 @@ export class Simulation {
     }
   }
 
+  spawnBlocker(): boolean {
+    if (!this.crash) return false;
+    const traffic = this.vehicles
+      .filter((vehicle) => !vehicle.crashed && vehicle.lane === 0)
+      .sort((a, b) => a.x - b.x);
+    const next = {
+      ...this.blocker,
+      id: Math.max(...this.vehicles.map((vehicle) => vehicle.id)) + 1,
+      lane: 0 as const,
+      visualLane: 0,
+      crashed: false,
+      blockedFor: 0,
+      signalUntil: 0,
+      nextSignal: 0,
+      passTarget: null,
+      cooldown: 3,
+      braking: false,
+      desiredSpeed: kmh(this.settings.blockerSpeed),
+    };
+    let placed = false;
+    if (traffic.length === 0) {
+      next.x = 660;
+      next.speed = next.desiredSpeed;
+      placed = true;
+    }
+    const gaps = traffic
+      .map((rear, index) => ({
+        rear,
+        front: traffic[(index + 1) % traffic.length],
+        length:
+          traffic.length === 1
+            ? ROAD_LENGTH
+            : this.distance(rear.x, traffic[(index + 1) % traffic.length].x),
+      }))
+      .sort((a, b) => b.length - a.length);
+    for (const { rear, front, length } of gaps) {
+      // Enter at the surrounding traffic's speed, then approach the target.
+      next.speed = Math.min(next.desiredSpeed, rear.speed, front.speed);
+      const rearSpace =
+        (rear.length + next.length) / 2 +
+        Math.max(
+          15,
+          rear.speed * 1.2 + Math.max(0, rear.speed - next.speed) * 2,
+        );
+      const frontSpace =
+        (front.length + next.length) / 2 +
+        Math.max(
+          15,
+          next.speed * 1.2 + Math.max(0, next.speed - front.speed) * 2,
+        );
+      if (length < rearSpace + frontSpace + 2) continue;
+      next.x =
+        (rear.x + rearSpace + (length - rearSpace - frontSpace) / 2) %
+        ROAD_LENGTH;
+      if (this.canMerge(next, 0)) {
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) return false;
+    this.vehicles.unshift(next);
+    this.crash = null;
+    this.releaseTime = null;
+    this.clearedTime = null;
+    this.attack = null;
+    this.emit("spawn", next.id, next.id);
+    return true;
+  }
+
   setArcade(options: ArcadeOptions): void {
     this.arcade = { ...options };
     if (
@@ -227,7 +299,7 @@ export class Simulation {
   private emit(
     kind: TrafficEvent["kind"],
     actorId: number,
-    targetId = 0,
+    targetId = this.blocker.id,
   ): void {
     this.events.push({
       id: ++this.eventId,
@@ -242,12 +314,14 @@ export class Simulation {
   private crashBlocker(): void {
     if (!this.attack || this.crash) return;
     this.crash = {
+      vehicleId: this.blocker.id,
       time: this.time,
       x: this.blocker.x,
       lane: this.blocker.visualLane,
       speed: this.blocker.speed,
       cause: this.attack.kind,
     };
+    this.wrecks.push(this.crash);
     this.blocker.crashed = true;
     this.blocker.speed = 0;
     this.emit("crash", this.attack.actorId);
@@ -312,10 +386,14 @@ export class Simulation {
         const right = this.leader(vehicle, 1);
         // An impatient driver switches only when nearby right-lane traffic is
         // at least about as fast as the slower car ahead (within 5 km/h).
-        const rightSpeed = right && right.gap < Math.max(120, vehicle.speed * 5)
-          ? right.vehicle.speed
-          : vehicle.desiredSpeed;
-        if (front.vehicle.speed <= rightSpeed + kmh(5) && (!right || right.gap > front.gap + 15)) {
+        const rightSpeed =
+          right && right.gap < Math.max(120, vehicle.speed * 5)
+            ? right.vehicle.speed
+            : vehicle.desiredSpeed;
+        if (
+          front.vehicle.speed <= rightSpeed + kmh(5) &&
+          (!right || right.gap > front.gap + 15)
+        ) {
           vehicle.passTarget = front.vehicle.id;
           vehicle.lane = 1;
           vehicle.cooldown = 2;
@@ -336,9 +414,23 @@ export class Simulation {
   private signalLeftLaneDrivers(): void {
     if (!this.arcade.signals) return;
     for (const vehicle of this.vehicles) {
-      if (vehicle.kind !== "car" || vehicle.crashed || vehicle.lane !== 0 || vehicle.visualLane > 0.1 || vehicle.blockedFor <= 3 || this.time < vehicle.nextSignal) continue;
+      if (
+        vehicle.kind !== "car" ||
+        vehicle.crashed ||
+        vehicle.lane !== 0 ||
+        vehicle.visualLane > 0.1 ||
+        vehicle.blockedFor <= 3 ||
+        this.time < vehicle.nextSignal
+      )
+        continue;
       const front = this.leader(vehicle);
-      if (!front || front.gap >= 100 || vehicle.desiredSpeed - vehicle.speed <= kmh(5) || this.random() >= 0.45) continue;
+      if (
+        !front ||
+        front.gap >= 100 ||
+        vehicle.desiredSpeed - vehicle.speed <= kmh(5) ||
+        this.random() >= 0.45
+      )
+        continue;
       vehicle.signalUntil = this.time + 1.4;
       vehicle.nextSignal = this.time + 5 + this.random() * 5;
       this.emit("horn", vehicle.id, front.vehicle.id);
@@ -444,7 +536,9 @@ export class Simulation {
           continue;
         }
         const ahead = this.distance(target.x, vehicle.x);
-        const passed = ahead > (vehicle.length + target.length) / 2 + 8 && ahead < ROAD_LENGTH / 2;
+        const passed =
+          ahead > (vehicle.length + target.length) / 2 + 8 &&
+          ahead < ROAD_LENGTH / 2;
         if (passed && this.canMerge(vehicle, 0)) {
           vehicle.lane = 0;
           vehicle.cooldown = 5;

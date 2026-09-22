@@ -127,6 +127,44 @@ for (const mode of ["Crazy road rage", "007 mode"]) {
   });
 }
 
+test("a new blocker can be spawned without restarting the crashed scene", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: "Spawn new blocker" }),
+  ).not.toBeVisible();
+  await page.getByRole("checkbox", { name: "007 mode", exact: true }).check();
+  await page.getByRole("button", { name: "5×" }).click();
+  await expect(page.locator("#road-status")).toHaveText(
+    "Blocker crashed off-road",
+    { timeout: 15000 },
+  );
+  await page.getByRole("button", { name: "Pause simulation" }).click();
+  const time = await page.locator("#clock").textContent();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.getByRole("button", { name: "Spawn new blocker" }).click();
+  await expect(page.locator("#road-status")).toHaveText("Left lane blocked");
+  await expect(page.locator("#clock")).toHaveText(time!);
+  await expect(page.locator("#arcade-status")).toContainText(
+    "Existing wrecks remain off-road",
+  );
+  await expect(
+    page.getByRole("button", { name: "Spawn new blocker" }),
+  ).not.toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: "007 mode", exact: true }),
+  ).toBeChecked();
+  expect(errors).toEqual([]);
+});
+
 test("sound is opt-in and current effects stop on pause, reset, and mute", async ({
   page,
 }) => {

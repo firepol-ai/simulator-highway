@@ -669,6 +669,20 @@ input.amber-range::-moz-range-thumb {
   width: 35px;
   flex-shrink: 0;
 }
+.intervention-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.intervention-actions [hidden] {
+  display: none;
+}
+.intervention.has-wreck {
+  flex-wrap: wrap;
+}
+.intervention.has-wreck .intervention-actions {
+  margin-left: auto;
+}
 .intervention-copy {
   flex: 1;
 }
