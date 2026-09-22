@@ -271,7 +271,13 @@ export function drawChart(canvas: HTMLCanvasElement, sim: Simulation): void {
     bottom = height - 24;
   const maxSpeed =
     Math.ceil(
-      (sim.settings.speedLimit + sim.settings.overtakingExtra + 10) / 20,
+      (Math.max(
+        sim.settings.speedLimit,
+        sim.settings.fasterSpeed,
+        sim.settings.blockerSpeed,
+      ) +
+        10) /
+        20,
     ) * 20;
   ctx.font = "10px Arial";
   for (let i = 0; i <= 3; i++) {

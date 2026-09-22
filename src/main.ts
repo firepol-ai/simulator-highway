@@ -37,10 +37,10 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
           <div class="range-ends"><span>60 km/h</span><span>120 km/h</span></div>
         </div>
         <div class="setting">
-          <label for="overtaking-extra">Faster drivers <span class="setting-dot green"></span></label>
-          <div class="range-value"><output id="overtaking-extra-value" for="overtaking-extra">+15</output><span>km/h over the limit</span></div>
-          <input id="overtaking-extra" type="range" min="0" max="30" step="5" value="15" />
-          <div class="range-ends"><span>+0 km/h</span><span>+30 km/h</span></div>
+          <label for="faster-speed">Faster drivers <span class="setting-dot green"></span></label>
+          <div class="range-value"><output id="faster-speed-value" for="faster-speed">95</output><span>km/h target speed</span></div>
+          <input id="faster-speed" type="range" min="60" max="300" step="5" value="95" />
+          <div class="range-ends"><span>60 km/h</span><span>300 km/h</span></div>
         </div>
         <div class="setting">
           <label for="vehicle-count">Traffic density <output class="value-pill" id="density-name">Moderate</output></label>
@@ -50,11 +50,11 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         </div>
         <div class="blocker-setting">
           <div class="blocker-title"><span class="setting-dot amber"></span><h3>The left-lane blocker</h3></div>
-          <p>A slower driver stays in the overtaking lane. Everyone behind has to adapt.</p>
+          <p>One driver stays in the overtaking lane. Faster cars behind have to adapt.</p>
           <label for="blocker-speed">Driver’s speed</label>
           <div class="range-value"><output id="blocker-speed-value" for="blocker-speed">75</output><span>km/h</span><span class="below-limit" id="below-limit">5 below limit</span></div>
-          <input id="blocker-speed" class="amber-range" type="range" min="40" max="80" step="1" value="75" />
-          <div class="range-ends"><span>40 km/h</span><span id="blocker-max">80 km/h</span></div>
+          <input id="blocker-speed" class="amber-range" type="range" min="40" max="300" step="1" value="75" />
+          <div class="range-ends"><span>40 km/h</span><span>300 km/h</span></div>
         </div>
         <p class="settings-note">Changing a setting restarts the experiment.</p>
       </aside>
@@ -75,7 +75,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     </div>
     <footer><span><span class="footer-dot"></span> A little perspective on the road we share.</span><button class="text-button about-trigger">How it works ${icon("arrow", 14)}</button></footer>
   </main>
-  <dialog id="about-dialog"><button id="close-about" class="dialog-close" aria-label="Close explanation">×</button><div class="eyebrow">BEHIND THE EXPERIMENT</div><h2>Traffic is a chain reaction.</h2><p>Each car accelerates toward its desired speed and brakes according to its distance and closing speed to the car ahead. Faster drivers use the left lane to overtake, then return right when there is room. Right-lane cars also respond to slower traffic ahead on the left to discourage passing on the right.</p><p>The orange driver deliberately stays left until you select <strong>Clear the left lane</strong>. It then accelerates to the faster drivers’ target speed, waits for a safe gap, and merges right. Recovery takes time as the following cars accelerate.</p><p>This is an illustrative, deterministic car-following model on a repeating 1.2 km road, not a calibrated traffic forecast or a complete implementation of traffic law. Cars are enlarged for visibility. “Faster drivers” can exceed your selected limit to represent that behavior, not recommend it.</p><p><strong>Try it:</strong> run the default scene for 30–60 simulated seconds, release the driver, and compare the speed trace. Higher density and a slower blocker make the effect more noticeable. Other slow vehicles and dense traffic can still limit recovery.</p><p class="dialog-note">Settings restart the scene. Playback speed changes simulated time only. Traffic flow is a density-based estimate, not a count at a roadside detector.</p></dialog>
+  <dialog id="about-dialog"><button id="close-about" class="dialog-close" aria-label="Close explanation">×</button><div class="eyebrow">BEHIND THE EXPERIMENT</div><h2>Traffic is a chain reaction.</h2><p>Each car accelerates toward its desired speed and brakes according to its distance and closing speed to the car ahead. Faster drivers use the left lane to overtake, then return right when there is room. Right-lane cars also respond to slower traffic ahead on the left to discourage passing on the right.</p><p>The orange driver deliberately stays left until you select <strong>Clear the left lane</strong>. It then finishes the pass at a target no lower than its current setting or the faster drivers’ target, waits for a safe gap, and merges right. Both driver controls allow targets up to 300 km/h. Recovery takes time as the following cars accelerate.</p><p>This is an illustrative, deterministic car-following model on a repeating 1.2 km road, not a calibrated traffic forecast or a complete implementation of traffic law. Cars are enlarged for visibility. “Faster drivers” can exceed your selected limit to represent that behavior, not recommend it.</p><p><strong>Try it:</strong> run the default scene for 30–60 simulated seconds, release the driver, and compare the speed trace. Higher density and a slower blocker make the effect more noticeable. Other slow vehicles and dense traffic can still limit recovery.</p><p class="dialog-note">Settings restart the scene. Playback speed changes simulated time only. Traffic flow is a density-based estimate, not a count at a roadside detector.</p></dialog>
 `;
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
@@ -128,7 +128,7 @@ function updateUI(): void {
       phase === "blocking"
         ? "Let the orange car finish overtaking and move back to the right."
         : phase === "overtaking"
-          ? "The driver is accelerating and looking for a safe gap on the right."
+          ? "The driver is finishing the pass and looking for a safe gap on the right."
           : "Watch the cars behind accelerate. Restart to run the experiment again.";
   }
   drawChart(chart, sim);
@@ -145,21 +145,19 @@ function applySettings(): void {
   const settings: Settings = {
     speedLimit: Number($<HTMLInputElement>("#speed-limit").value),
     blockerSpeed: Number($<HTMLInputElement>("#blocker-speed").value),
-    overtakingExtra: Number($<HTMLInputElement>("#overtaking-extra").value),
+    fasterSpeed: Number($<HTMLInputElement>("#faster-speed").value),
     vehicleCount: Number($<HTMLInputElement>("#vehicle-count").value),
   };
-  const blockerInput = $<HTMLInputElement>("#blocker-speed");
-  blockerInput.max = String(settings.speedLimit);
-  settings.blockerSpeed = Math.min(settings.blockerSpeed, settings.speedLimit);
-  blockerInput.value = String(settings.blockerSpeed);
   $("#speed-limit-value").textContent = String(settings.speedLimit);
   $("#speed-sign").textContent = String(settings.speedLimit);
-  $("#overtaking-extra-value").textContent = `+${settings.overtakingExtra}`;
+  $("#faster-speed-value").textContent = String(settings.fasterSpeed);
   $("#vehicle-count-value").textContent = String(settings.vehicleCount);
   $("#blocker-speed-value").textContent = String(settings.blockerSpeed);
-  $("#blocker-max").textContent = `${settings.speedLimit} km/h`;
+  const difference = settings.blockerSpeed - settings.speedLimit;
   $("#below-limit").textContent =
-    `${settings.speedLimit - settings.blockerSpeed} below limit`;
+    difference === 0
+      ? "At the limit"
+      : `${Math.abs(difference)} ${difference > 0 ? "above" : "below"} limit`;
   $("#density-name").textContent =
     settings.vehicleCount < 22
       ? "Light"

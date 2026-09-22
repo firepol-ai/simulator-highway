@@ -1,7 +1,7 @@
 export interface Settings {
   speedLimit: number;
   blockerSpeed: number;
-  overtakingExtra: number;
+  fasterSpeed: number;
   vehicleCount: number;
 }
 
@@ -29,7 +29,7 @@ export interface Sample {
 export const DEFAULT_SETTINGS: Settings = {
   speedLimit: 80,
   blockerSpeed: 75,
-  overtakingExtra: 15,
+  fasterSpeed: 95,
   vehicleCount: 26,
 };
 
@@ -90,8 +90,9 @@ export class Simulation {
           ? this.settings.blockerSpeed
           : kind === "truck"
             ? this.settings.speedLimit - 12
-            : this.settings.speedLimit +
-              (fast ? this.settings.overtakingExtra : -(id % 3) * 2);
+            : fast
+              ? this.settings.fasterSpeed
+              : this.settings.speedLimit - (id % 3) * 2;
       this.vehicles.push({
         id,
         x,
@@ -184,19 +185,17 @@ export class Simulation {
   }
 
   private desired(vehicle: Vehicle): number {
-    const { speedLimit, blockerSpeed, overtakingExtra } = this.settings;
+    const { speedLimit, blockerSpeed, fasterSpeed } = this.settings;
     if (vehicle.kind === "blocker")
       return kmh(
         this.phase === "blocking"
           ? blockerSpeed
           : this.phase === "overtaking"
-            ? speedLimit + overtakingExtra
+            ? Math.max(speedLimit, blockerSpeed, fasterSpeed)
             : speedLimit,
       );
     if (vehicle.kind === "truck") return kmh(speedLimit - 12);
-    return kmh(
-      speedLimit + (vehicle.fast ? overtakingExtra : -(vehicle.id % 3) * 2),
-    );
+    return kmh(vehicle.fast ? fasterSpeed : speedLimit - (vehicle.id % 3) * 2);
   }
 
   step(dt: number): void {

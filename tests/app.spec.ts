@@ -44,22 +44,31 @@ test("the intervention completes and restart restores the blocker", async ({
   ).toBeEnabled();
 });
 
-test("settings update their values, constrain blocker speed, and reset the experiment", async ({
+test("settings support independent driver speeds up to 300 and reset the experiment", async ({
   page,
 }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Pause simulation" }).click();
   await page.getByRole("slider", { name: "Speed limit" }).fill("60");
   await expect(page.locator("#speed-limit-value")).toHaveText("60");
-  await expect(page.locator("#blocker-speed")).toHaveAttribute("max", "60");
-  await expect(page.locator("#blocker-speed-value")).toHaveText("60");
+  await expect(page.locator("#blocker-speed")).toHaveAttribute("max", "300");
+  await expect(page.locator("#blocker-speed-value")).toHaveText("75");
   await page.getByRole("slider", { name: "Driver’s speed" }).fill("55");
   await expect(page.locator("#below-limit")).toHaveText("5 below limit");
   await page.getByRole("slider", { name: "Traffic density" }).fill("44");
   await expect(page.locator("#density-name")).toHaveText("Heavy");
   await expect(page.locator("#vehicle-count-value")).toHaveText("44");
-  await page.getByRole("slider", { name: "Faster drivers" }).fill("25");
-  await expect(page.locator("#overtaking-extra-value")).toHaveText("+25");
+  await page.getByRole("slider", { name: "Faster drivers" }).fill("300");
+  await expect(page.locator("#faster-speed-value")).toHaveText("300");
+  await page.getByRole("slider", { name: "Driver’s speed" }).fill("300");
+  await expect(page.locator("#blocker-speed-value")).toHaveText("300");
+  await expect(page.locator("#below-limit")).toHaveText("240 above limit");
+  await page.getByRole("slider", { name: "Speed limit" }).fill("120");
+  await expect(page.locator("#faster-speed-value")).toHaveText("300");
+  await expect(page.locator("#blocker-speed-value")).toHaveText("300");
+  await expect(page.locator("#below-limit")).toHaveText("180 above limit");
+  await page.getByRole("slider", { name: "Driver’s speed" }).fill("120");
+  await expect(page.locator("#below-limit")).toHaveText("At the limit");
   await expect(page.locator("#clock")).toHaveText("00:00");
 });
 

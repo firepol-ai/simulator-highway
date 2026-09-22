@@ -45,7 +45,7 @@ test("dense traffic opens a safe gap for the signaling blocker", () => {
   const sim = new Simulation({
     speedLimit: 120,
     blockerSpeed: 120,
-    overtakingExtra: 0,
+    fasterSpeed: 120,
     vehicleCount: 44,
   });
   advance(sim, 30);
@@ -61,7 +61,7 @@ test("cars stay finite, on the road, and separated at setting extremes", () => {
         speedLimit,
         vehicleCount,
         blockerSpeed: 40,
-        overtakingExtra: 30,
+        fasterSpeed: speedLimit + 30,
       });
       for (let i = 0; i < 1800; i++) {
         if (i === 600) sim.release();
@@ -94,6 +94,48 @@ test("reset restores the scenario, metrics history, and intervention", () => {
   assert.equal(sim.samples.length, 1);
 });
 
+test("300 km/h targets remain independent and high-speed traffic stays separated", () => {
+  for (const vehicleCount of [12, 44]) {
+    for (const [fasterSpeed, blockerSpeed] of [
+      [300, 75],
+      [95, 300],
+      [300, 300],
+      [300, 40],
+    ]) {
+      const sim = new Simulation({
+        speedLimit: 80,
+        fasterSpeed,
+        blockerSpeed,
+        vehicleCount,
+      });
+      assert.equal(sim.blocker.desiredSpeed * 3.6, blockerSpeed);
+      assert.ok(
+        sim.vehicles
+          .filter((vehicle) => vehicle.fast)
+          .every(
+            (vehicle) =>
+              Math.abs(vehicle.desiredSpeed * 3.6 - fasterSpeed) < 1e-9,
+          ),
+      );
+      for (let i = 0; i < 1800; i++) {
+        if (i === 600) sim.release();
+        sim.step(0.1);
+        for (const vehicle of sim.vehicles) {
+          assert.ok(
+            Number.isFinite(vehicle.speed) &&
+              vehicle.speed >= 0 &&
+              vehicle.speed * 3.6 <= 300 + 1e-9,
+          );
+          assert.ok(vehicle.x >= 0 && vehicle.x < ROAD_LENGTH);
+          // Allow floating-point roundoff at the model's one-metre minimum gap.
+          assert.ok((sim.leader(vehicle)?.gap ?? Infinity) >= 1 - 1e-9);
+        }
+      }
+      assert.equal(sim.phase, "clear");
+    }
+  }
+});
+
 test("playback substeps preserve the simulation at faster playback speeds", () => {
   const slow = new Simulation();
   const fast = new Simulation();
@@ -110,7 +152,7 @@ test("settings reset vehicle count and speeds; chart history is bounded", () => 
   sim.configure({
     speedLimit: 100,
     blockerSpeed: 90,
-    overtakingExtra: 20,
+    fasterSpeed: 120,
     vehicleCount: 12,
   });
   assert.equal(sim.vehicles.length, 12);
