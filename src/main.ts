@@ -87,7 +87,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     </div>
     <footer><span><span class="footer-dot"></span> A little perspective on the road we share.</span><div class="footer-links"><a class="text-button" href="https://github.com/firepol-ai/simulator-highway" target="_blank" rel="noopener noreferrer">Source on GitHub ↗</a><button class="text-button about-trigger">How it works ${icon("arrow", 14)}</button></div></footer>
   </main>
-  <dialog id="about-dialog"><button id="close-about" class="dialog-close" aria-label="Close explanation">×</button><div class="eyebrow">BEHIND THE EXPERIMENT</div><h2>Traffic is a chain reaction.</h2><p>Each car accelerates toward its desired speed and brakes according to its distance and closing speed to the car ahead. Faster drivers use the left lane to overtake, then return right when there is room. Right-lane cars also respond to slower traffic ahead on the left to discourage passing on the right.</p><p>The orange driver deliberately stays left until you select <strong>Clear the left lane</strong>. It then finishes the pass at a target no lower than its current setting or the faster drivers’ target, waits for a safe gap, and merges right. Both driver controls allow targets up to 300 km/h. Recovery takes time as the following cars accelerate.</p><p>This is an illustrative, deterministic car-following model on a repeating 1.2 km road, not a calibrated traffic forecast or a complete implementation of traffic law. Cars are enlarged for visibility. “Faster drivers” can exceed your selected limit to represent that behavior, not recommend it.</p><p><strong>Try it:</strong> run the default scene for 30–60 simulated seconds, release the driver, and compare the speed trace. Higher density and a slower blocker make the effect more noticeable. Other slow vehicles and dense traffic can still limit recovery.</p><p class="dialog-note">Settings restart the scene. Playback speed changes simulated time only. Traffic flow is a density-based estimate, not a count at a roadside detector.</p></dialog>
+  <dialog id="about-dialog"><button id="close-about" class="dialog-close" aria-label="Close explanation">×</button><div class="eyebrow">BEHIND THE EXPERIMENT</div><h2>Traffic is a chain reaction.</h2><p>Each car accelerates toward its desired speed and brakes according to its distance and closing speed to the car ahead. Faster drivers use the left lane to overtake, then return right when there is room. Right-lane cars also respond to slower traffic ahead on the left to discourage passing on the right.</p><p>The orange driver deliberately stays left until you select <strong>Clear the left lane</strong>. It then finishes the pass at a target no lower than its current setting or the faster drivers’ target, waits for a safe gap, and merges right. Both driver controls allow targets up to 300 km/h. Recovery takes time as the following cars accelerate.</p><p>This is an illustrative, deterministic car-following model on a repeating 1.2 km road, not a calibrated traffic forecast or a complete implementation of traffic law. Cars are enlarged for visibility. “Faster drivers” can exceed your selected limit to represent that behavior, not recommend it.</p><p><strong>Try it:</strong> run the default scene for 30–60 simulated seconds, release the driver, and compare the speed trace. Higher density and a slower blocker make the effect more noticeable. Other slow vehicles and dense traffic can still limit recovery.</p><p><strong>Arcade options:</strong> enable random right-side passes, horns and headlight flashes, or fictional road-rage and 007 crash sequences. These start only after a driver is held up. Sound is opt-in. Releasing the blocker cancels an attack; restart clears the wreck. Behavior switches apply live, and reset keeps your selections.</p><p class="dialog-note">Settings restart the scene. Playback speed changes simulated time only. Traffic flow is a density-based estimate, not a count at a roadside detector.</p></dialog>
 `;
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
@@ -103,14 +103,18 @@ let previousUI = 0;
 let previousPhase = "";
 let lastAudioEvent = 0;
 
-const eventMessage = (event: TrafficEvent): string => ({
-  horn: `Car ${event.actorId} is honking and flashing its lights.`,
-  undertake: `Car ${event.actorId} is passing on the right.`,
-  return: `Car ${event.actorId} has returned to the left lane.`,
-  ram: `Car ${event.actorId} has lost its patience. Brace for impact.`,
-  shot: `Car ${event.actorId}: machine guns deployed.`,
-  crash: sim.crash?.cause === "gun" ? "007 mode: the blocker has crashed off-road." : "Road rage: the blocker has been rammed off-road.",
-})[event.kind];
+const eventMessage = (event: TrafficEvent): string =>
+  ({
+    horn: `Car ${event.actorId} is honking and flashing its lights.`,
+    undertake: `Car ${event.actorId} is passing on the right.`,
+    return: `Car ${event.actorId} has returned to the left lane.`,
+    ram: `Car ${event.actorId} has lost its patience. Brace for impact.`,
+    shot: `Car ${event.actorId}: machine guns deployed.`,
+    crash:
+      sim.crash?.cause === "gun"
+        ? "007 mode: the blocker has crashed off-road."
+        : "Road rage: the blocker has been rammed off-road.",
+  })[event.kind];
 
 function updateUI(): void {
   const metrics = sim.metrics;
@@ -127,38 +131,52 @@ function updateUI(): void {
   if (phase !== previousPhase) {
     previousPhase = phase;
     const release = $<HTMLButtonElement>("#release");
-    release.disabled = phase !== "blocking";
+    release.disabled = phase !== "blocking" && phase !== "crashed";
     release.innerHTML =
-      phase === "crashed" ? "Restart to try again" : phase === "blocking"
-        ? `Clear the left lane ${icon("arrow")}`
-        : phase === "overtaking"
-          ? "Overtaking…"
-          : `Left lane released ${icon("check")}`;
+      phase === "crashed"
+        ? "Restart to try again"
+        : phase === "blocking"
+          ? `Clear the left lane ${icon("arrow")}`
+          : phase === "overtaking"
+            ? "Overtaking…"
+            : `Left lane released ${icon("check")}`;
     $("#road-status").textContent =
-      phase === "crashed" ? "Blocker crashed off-road" : phase === "blocking"
-        ? "Left lane blocked"
-        : phase === "overtaking"
-          ? "Finding a safe gap"
-          : "Blocker moved right";
+      phase === "crashed"
+        ? "Blocker crashed off-road"
+        : phase === "blocking"
+          ? "Left lane blocked"
+          : phase === "overtaking"
+            ? "Finding a safe gap"
+            : "Blocker moved right";
     $(".road-badge").classList.toggle("is-clear", phase === "clear");
     $(".road-badge").classList.toggle("is-crashed", phase === "crashed");
     $("#action-title").textContent =
-      phase === "crashed" ? "Well, that escalated." : phase === "blocking"
-        ? "Give traffic a little room."
-        : phase === "overtaking"
-          ? "A safe pass takes a moment."
-          : "Room to move again.";
+      phase === "crashed"
+        ? "Well, that escalated."
+        : phase === "blocking"
+          ? "Give traffic a little room."
+          : phase === "overtaking"
+            ? "A safe pass takes a moment."
+            : "Room to move again.";
     $("#action-description").textContent =
-      phase === "crashed" ? "The wreck is off the road. Remaining traffic can recover; restart for another scene." : phase === "blocking"
-        ? "Let the orange car finish overtaking and move back to the right."
-        : phase === "overtaking"
-          ? "The driver is finishing the pass and looking for a safe gap on the right."
-          : "Watch the cars behind accelerate. Restart to run the experiment again.";
+      phase === "crashed"
+        ? "The wreck is off the road. Remaining traffic can recover; restart for another scene."
+        : phase === "blocking"
+          ? "Let the orange car finish overtaking and move back to the right."
+          : phase === "overtaking"
+            ? "The driver is finishing the pass and looking for a safe gap on the right."
+            : "Watch the cars behind accelerate. Restart to run the experiment again.";
   }
   const latest = sim.events.at(-1);
   const active = Object.values(sim.arcade).some(Boolean);
-  const status = latest && (sim.time - latest.time < 8 || sim.crash) ? eventMessage(latest) : active ? "Arcade antics enabled. Waiting for an impatient driver…" : "All antics off. Just traffic being traffic.";
-  if ($("#arcade-status").textContent !== status) $("#arcade-status").textContent = status;
+  const status =
+    latest && (sim.time - latest.time < 8 || sim.crash)
+      ? eventMessage(latest)
+      : active
+        ? "Arcade antics enabled. Waiting for an impatient driver…"
+        : "All antics off. Just traffic being traffic.";
+  if ($("#arcade-status").textContent !== status)
+    $("#arcade-status").textContent = status;
   drawChart(chart, sim);
 }
 
@@ -216,6 +234,7 @@ $("#play-pause").addEventListener("click", () => {
   );
   $(".live-label").classList.toggle("paused", paused);
   if (paused) audio.stop();
+  else if (audio.enabled) void audio.enable();
 });
 $("#reset").addEventListener("click", () => {
   sim.reset();
@@ -224,34 +243,44 @@ $("#reset").addEventListener("click", () => {
   updateUI();
 });
 $("#release").addEventListener("click", () => {
-  sim.release();
+  if (sim.crash) {
+    sim.reset();
+    audio.stop();
+    lastAudioEvent = 0;
+  } else sim.release();
   updateUI();
 });
 $("#show-speeds").addEventListener("change", (event) => {
   renderer.showSpeeds = (event.target as HTMLInputElement).checked;
 });
-document.querySelectorAll<HTMLInputElement>('.arcade-options input').forEach(input => input.addEventListener('change', () => {
-  sim.setArcade({
-    undertaking: $<HTMLInputElement>('#arcade-undertaking').checked,
-    signals: $<HTMLInputElement>('#arcade-signals').checked,
-    roadRage: $<HTMLInputElement>('#arcade-rage').checked,
-    spyMode: $<HTMLInputElement>('#arcade-spy').checked,
-  });
-  audio.stop();
-  updateUI();
-}));
-$('#sound-enabled').addEventListener('change', async () => {
-  const checkbox = $<HTMLInputElement>('#sound-enabled');
+document
+  .querySelectorAll<HTMLInputElement>(".arcade-options input")
+  .forEach((input) =>
+    input.addEventListener("change", () => {
+      sim.setArcade({
+        undertaking: $<HTMLInputElement>("#arcade-undertaking").checked,
+        signals: $<HTMLInputElement>("#arcade-signals").checked,
+        roadRage: $<HTMLInputElement>("#arcade-rage").checked,
+        spyMode: $<HTMLInputElement>("#arcade-spy").checked,
+      });
+      audio.stop();
+      updateUI();
+    }),
+  );
+$("#sound-enabled").addEventListener("change", async () => {
+  const checkbox = $<HTMLInputElement>("#sound-enabled");
   if (checkbox.checked) {
     const enabled = await audio.enable();
     if (!enabled && checkbox.checked) {
       checkbox.checked = false;
-      checkbox.setAttribute('aria-describedby', 'sound-error');
-      if (!$('#sound-error')) {
-        const error = document.createElement('p');
-        error.id = 'sound-error'; error.className = 'arcade-intro';
-        error.textContent = 'Audio could not start in this browser. The visual effects still work.';
-        $('.arcade-panel').append(error);
+      checkbox.setAttribute("aria-describedby", "sound-error");
+      if (!$("#sound-error")) {
+        const error = document.createElement("p");
+        error.id = "sound-error";
+        error.className = "arcade-intro";
+        error.textContent =
+          "Audio could not start in this browser. The visual effects still work.";
+        $(".arcade-panel").append(error);
       }
     }
   } else audio.disable();

@@ -209,30 +209,58 @@ export class RoadRenderer {
       if (vehicle.signalUntil > sim.time) {
         const glow = 0.15 + (Math.sin(sim.time * 9) + 1) * 0.22;
         ctx.fillStyle = `rgba(255,245,181,${glow})`;
-        ctx.beginPath(); ctx.moveTo(x + length / 2, y - 5); ctx.lineTo(x + 42, y - 17); ctx.lineTo(x + 42, y + 17); ctx.lineTo(x + length / 2, y + 5); ctx.fill();
-        ctx.strokeStyle = "#f9d68c"; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x + length / 2, y - 5);
+        ctx.lineTo(x + 42, y - 17);
+        ctx.lineTo(x + 42, y + 17);
+        ctx.lineTo(x + length / 2, y + 5);
+        ctx.fill();
+        ctx.strokeStyle = "#f9d68c";
+        ctx.lineWidth = 1.5;
         for (const radius of [17, 23]) {
-          ctx.beginPath(); ctx.arc(x, y, radius, -0.65, 0.65); ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(x, y, radius, -0.65, 0.65);
+          ctx.stroke();
         }
       }
       if (vehicle.passTarget !== null || sim.attack?.actorId === vehicle.id) {
-        ctx.strokeStyle = sim.attack?.actorId === vehicle.id ? "#f08d79" : "#e7bc77";
+        ctx.strokeStyle =
+          sim.attack?.actorId === vehicle.id ? "#f08d79" : "#e7bc77";
         ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.roundRect(x - length / 2 - 3, y - width / 2 - 3, length + 6, width + 6, 5); ctx.stroke();
+        ctx.beginPath();
+        ctx.roundRect(
+          x - length / 2 - 3,
+          y - width / 2 - 3,
+          length + 6,
+          width + 6,
+          5,
+        );
+        ctx.stroke();
       }
       if (sim.attack?.kind === "gun" && sim.attack.actorId === vehicle.id) {
-        const distance = (sim.blocker.x - vehicle.x + ROAD_LENGTH) % ROAD_LENGTH;
+        const distance =
+          (sim.blocker.x - vehicle.x + ROAD_LENGTH) % ROAD_LENGTH;
         const targetX = x + distance * scale;
         ctx.fillStyle = "#25383c";
-        ctx.fillRect(x + 7, y - 6, 10, 3); ctx.fillRect(x + 7, y + 3, 10, 3);
-        ctx.strokeStyle = "#ffe4a1"; ctx.lineWidth = 2;
+        ctx.fillRect(x + 7, y - 6, 10, 3);
+        ctx.fillRect(x + 7, y + 3, 10, 3);
+        ctx.strokeStyle = "#ffe4a1";
+        ctx.lineWidth = 2;
         for (const offset of [-4, 4]) {
-          const travel = ((sim.time - sim.attack.startedAt) * 5 + (offset + 4) / 20) % 1;
+          const travel =
+            ((sim.time - sim.attack.startedAt) * 5 + (offset + 4) / 20) % 1;
           const bulletX = x + 17 + Math.max(0, targetX - x - 27) * travel;
-          ctx.beginPath(); ctx.moveTo(bulletX, y + offset); ctx.lineTo(bulletX + 7, y + offset); ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(bulletX, y + offset);
+          ctx.lineTo(bulletX + 7, y + offset);
+          ctx.stroke();
         }
         ctx.fillStyle = "#ffc773";
-        ctx.beginPath(); ctx.moveTo(x + 17, y - 6); ctx.lineTo(x + 25, y); ctx.lineTo(x + 17, y + 6); ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(x + 17, y - 6);
+        ctx.lineTo(x + 25, y);
+        ctx.lineTo(x + 17, y + 6);
+        ctx.fill();
       }
       if (this.showSpeeds && !isBlocker) {
         ctx.font = "9px Arial";
@@ -280,39 +308,79 @@ export class RoadRenderer {
     this.observer.disconnect();
   }
 
-  private drawCrash(x: number, y: number, roadTop: number, sim: Simulation): void {
+  private drawCrash(
+    x: number,
+    y: number,
+    roadTop: number,
+    sim: Simulation,
+  ): void {
     const ctx = this.ctx;
     const age = sim.time - sim.crash!.time;
     const progress = Math.min(1, age / 2.4);
     const ease = 1 - (1 - progress) ** 2;
     const wreckX = Math.min(this.width - 20, x + ease * 35);
     const wreckY = y + (roadTop - 31 - y) * ease;
-    ctx.strokeStyle = "#28363870"; ctx.lineWidth = 2;
+    ctx.strokeStyle = "#28363870";
+    ctx.lineWidth = 2;
     for (const offset of [-4, 4]) {
-      ctx.beginPath(); ctx.moveTo(x - 8, y + offset); ctx.quadraticCurveTo(x + 25, y - 4 + offset, wreckX, wreckY + offset); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - 8, y + offset);
+      ctx.quadraticCurveTo(x + 25, y - 4 + offset, wreckX, wreckY + offset);
+      ctx.stroke();
     }
-    ctx.save(); ctx.translate(wreckX, wreckY); ctx.rotate(-ease * 1.2);
+    ctx.save();
+    ctx.translate(wreckX, wreckY);
+    ctx.rotate(-ease * 1.2);
     roundedRect(ctx, -12, -7, 24, 14, 3, "#895b40");
     roundedRect(ctx, -4, -5, 8, 10, 2, "#354746");
-    ctx.strokeStyle = "#e2a66b"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(8, -6); ctx.lineTo(4, 0); ctx.lineTo(10, 5); ctx.stroke();
+    ctx.strokeStyle = "#e2a66b";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(8, -6);
+    ctx.lineTo(4, 0);
+    ctx.lineTo(10, 5);
+    ctx.stroke();
     ctx.restore();
     if (age < 1.4) {
-      ctx.strokeStyle = `rgba(255,203,116,${1 - age / 1.4})`; ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(255,203,116,${1 - age / 1.4})`;
+      ctx.lineWidth = 2;
       for (let i = 0; i < 10; i++) {
-        const angle = i * Math.PI / 5;
-        ctx.beginPath(); ctx.moveTo(x + Math.cos(angle) * age * 18, y + Math.sin(angle) * age * 18);
-        ctx.lineTo(x + Math.cos(angle) * (age * 18 + 8), y + Math.sin(angle) * (age * 18 + 8)); ctx.stroke();
+        const angle = (i * Math.PI) / 5;
+        ctx.beginPath();
+        ctx.moveTo(
+          x + Math.cos(angle) * age * 18,
+          y + Math.sin(angle) * age * 18,
+        );
+        ctx.lineTo(
+          x + Math.cos(angle) * (age * 18 + 8),
+          y + Math.sin(angle) * (age * 18 + 8),
+        );
+        ctx.stroke();
       }
     }
     if (age < 14) {
       for (let i = 0; i < 5; i++) {
         const drift = (age + i * 0.45) % 2.5;
         ctx.fillStyle = `rgba(86,91,82,${Math.max(0, (1 - drift / 2.5) * 0.24 * Math.min(1, 14 - age))})`;
-        ctx.beginPath(); ctx.arc(wreckX - drift * 7, wreckY - drift * 13, 4 + drift * 6, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath();
+        ctx.arc(
+          wreckX - drift * 7,
+          wreckY - drift * 13,
+          4 + drift * 6,
+          0,
+          Math.PI * 2,
+        );
+        ctx.fill();
       }
     }
-    ctx.textAlign = "center"; ctx.font = "600 9px Arial"; ctx.fillStyle = "#865a42";
-    ctx.fillText("BLOCKER CRASHED", Math.max(65, Math.min(this.width - 65, wreckX)), roadTop - 69);
+    ctx.textAlign = "center";
+    ctx.font = "600 9px Arial";
+    ctx.fillStyle = "#865a42";
+    ctx.fillText(
+      "BLOCKER CRASHED",
+      Math.max(65, Math.min(this.width - 65, wreckX)),
+      roadTop - 69,
+    );
     ctx.textAlign = "left";
   }
 }
@@ -410,9 +478,15 @@ export function drawChart(canvas: HTMLCanvasElement, sim: Simulation): void {
   }
   if (sim.crash && sim.crash.time >= start) {
     const x = xFor(sim.crash.time);
-    ctx.strokeStyle = "#b66f50"; ctx.setLineDash([3, 3]);
-    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = "#9d5c3e"; ctx.textAlign = x > width - 90 ? "right" : "left";
+    ctx.strokeStyle = "#b66f50";
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#9d5c3e";
+    ctx.textAlign = x > width - 90 ? "right" : "left";
     ctx.fillText("Crash", x + (x > width - 90 ? -5 : 5), top + 9);
   }
   ctx.fillStyle = "#8a9287";

@@ -26,7 +26,10 @@ export class TrafficAudio {
     }
   }
 
-  disable(): void { this.enabled = false; this.stop(); }
+  disable(): void {
+    this.enabled = false;
+    this.stop();
+  }
 
   stop(): void {
     for (const source of this.sources) source.stop();
@@ -56,7 +59,12 @@ export class TrafficAudio {
     }
   }
 
-  private connect(source: AudioScheduledSourceNode, duration: number, volume: number, filter?: BiquadFilterNode): void {
+  private connect(
+    source: AudioScheduledSourceNode,
+    duration: number,
+    volume: number,
+    filter?: BiquadFilterNode,
+  ): void {
     const ctx = this.context!;
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0, ctx.currentTime);
@@ -66,12 +74,22 @@ export class TrafficAudio {
     else source.connect(gain);
     gain.connect(this.master!);
     this.sources.add(source);
-    source.onended = () => { source.disconnect(); filter?.disconnect(); gain.disconnect(); this.sources.delete(source); };
+    source.onended = () => {
+      source.disconnect();
+      filter?.disconnect();
+      gain.disconnect();
+      this.sources.delete(source);
+    };
     source.start();
     source.stop(ctx.currentTime + duration + 0.01);
   }
 
-  private tone(frequency: number, duration: number, type: OscillatorType, volume: number): void {
+  private tone(
+    frequency: number,
+    duration: number,
+    type: OscillatorType,
+    volume: number,
+  ): void {
     const oscillator = this.context!.createOscillator();
     oscillator.type = type;
     oscillator.frequency.value = frequency;
@@ -80,7 +98,11 @@ export class TrafficAudio {
 
   private noise(duration: number, volume: number, cutoff: number): void {
     const ctx = this.context!;
-    const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate);
+    const buffer = ctx.createBuffer(
+      1,
+      Math.ceil(ctx.sampleRate * duration),
+      ctx.sampleRate,
+    );
     const channel = buffer.getChannelData(0);
     for (let i = 0; i < channel.length; i++) channel[i] = Math.random() * 2 - 1;
     const source = ctx.createBufferSource();

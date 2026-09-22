@@ -103,7 +103,10 @@ export class Simulation {
   private randomState = 42;
   private eventId = 0;
 
-  constructor(settings: Settings = DEFAULT_SETTINGS, arcade: ArcadeOptions = DEFAULT_ARCADE) {
+  constructor(
+    settings: Settings = DEFAULT_SETTINGS,
+    arcade: ArcadeOptions = DEFAULT_ARCADE,
+  ) {
     this.settings = { ...settings };
     this.arcade = { ...arcade };
     this.reset();
@@ -114,11 +117,13 @@ export class Simulation {
   }
 
   get phase(): "blocking" | "overtaking" | "clear" | "crashed" {
-    return this.crash ? "crashed" : this.clearedTime !== null
-      ? "clear"
-      : this.releaseTime !== null
-        ? "overtaking"
-        : "blocking";
+    return this.crash
+      ? "crashed"
+      : this.clearedTime !== null
+        ? "clear"
+        : this.releaseTime !== null
+          ? "overtaking"
+          : "blocking";
   }
 
   reset(): void {
@@ -204,24 +209,45 @@ export class Simulation {
 
   setArcade(options: ArcadeOptions): void {
     this.arcade = { ...options };
-    if ((this.attack?.kind === "ram" && !options.roadRage) ||
-        (this.attack?.kind === "gun" && !options.spyMode)) this.attack = null;
-    if (!options.signals) for (const vehicle of this.vehicles) vehicle.signalUntil = 0;
+    if (
+      (this.attack?.kind === "ram" && !options.roadRage) ||
+      (this.attack?.kind === "gun" && !options.spyMode)
+    )
+      this.attack = null;
+    if (!options.signals)
+      for (const vehicle of this.vehicles) vehicle.signalUntil = 0;
   }
 
   private random(): number {
-    this.randomState = (Math.imul(this.randomState, 1664525) + 1013904223) >>> 0;
+    this.randomState =
+      (Math.imul(this.randomState, 1664525) + 1013904223) >>> 0;
     return this.randomState / 4294967296;
   }
 
-  private emit(kind: TrafficEvent["kind"], actorId: number, targetId = 0): void {
-    this.events.push({ id: ++this.eventId, time: this.time, kind, actorId, targetId });
+  private emit(
+    kind: TrafficEvent["kind"],
+    actorId: number,
+    targetId = 0,
+  ): void {
+    this.events.push({
+      id: ++this.eventId,
+      time: this.time,
+      kind,
+      actorId,
+      targetId,
+    });
     if (this.events.length > 40) this.events.shift();
   }
 
   private crashBlocker(): void {
     if (!this.attack || this.crash) return;
-    this.crash = { time: this.time, x: this.blocker.x, lane: this.blocker.visualLane, speed: this.blocker.speed, cause: this.attack.kind };
+    this.crash = {
+      time: this.time,
+      x: this.blocker.x,
+      lane: this.blocker.visualLane,
+      speed: this.blocker.speed,
+      cause: this.attack.kind,
+    };
     this.blocker.crashed = true;
     this.blocker.speed = 0;
     this.emit("crash", this.attack.actorId);
@@ -229,25 +255,70 @@ export class Simulation {
   }
 
   private advanceArcade(dt: number): void {
+    if (this.attack) {
+      const actor = this.vehicles.find(
+        (vehicle) => vehicle.id === this.attack!.actorId,
+      )!;
+      if (
+        this.phase !== "blocking" ||
+        this.leader(actor)?.vehicle.id !== this.blocker.id
+      )
+        this.attack = null;
+    }
     const check = this.time >= this.nextBehaviorCheck;
     if (check) this.nextBehaviorCheck += 1;
     for (const vehicle of this.vehicles) {
       if (vehicle.kind !== "car" || vehicle.crashed) continue;
       const front = this.leader(vehicle);
-      const blocked = front && front.gap < 100 && vehicle.desiredSpeed - vehicle.speed > kmh(5);
-      vehicle.blockedFor = blocked ? vehicle.blockedFor + dt : Math.max(0, vehicle.blockedFor - dt * 2);
+      const blocked =
+        front &&
+        front.gap < 100 &&
+        vehicle.desiredSpeed - vehicle.speed > kmh(5);
+      vehicle.blockedFor = blocked
+        ? vehicle.blockedFor + dt
+        : Math.max(0, vehicle.blockedFor - dt * 2);
       if (!check || !blocked) continue;
-      if (this.arcade.signals && vehicle.blockedFor > 3 && this.time >= vehicle.nextSignal && this.random() < 0.45) {
+      if (
+        this.arcade.signals &&
+        vehicle.blockedFor > 3 &&
+        this.time >= vehicle.nextSignal &&
+        this.random() < 0.45
+      ) {
         vehicle.signalUntil = this.time + 1.4;
         vehicle.nextSignal = this.time + 5 + this.random() * 5;
         this.emit("horn", vehicle.id, front.vehicle.id);
       }
-      if (!this.attack && this.phase === "blocking" && vehicle.lane === 0 && front.vehicle.kind === "blocker" && vehicle.blockedFor > 9 && (this.arcade.roadRage || this.arcade.spyMode) && this.random() < 0.5) {
-        const kind = this.arcade.spyMode && (!this.arcade.roadRage || this.random() < 0.5) ? "gun" : "ram";
-        this.attack = { actorId: vehicle.id, kind, startedAt: this.time, nextShot: this.time };
+      if (
+        !this.attack &&
+        this.phase === "blocking" &&
+        vehicle.lane === 0 &&
+        front.vehicle.kind === "blocker" &&
+        vehicle.blockedFor > 9 &&
+        (this.arcade.roadRage || this.arcade.spyMode) &&
+        this.random() < 0.5
+      ) {
+        const kind =
+          this.arcade.spyMode && (!this.arcade.roadRage || this.random() < 0.5)
+            ? "gun"
+            : "ram";
+        this.attack = {
+          actorId: vehicle.id,
+          kind,
+          startedAt: this.time,
+          nextShot: this.time,
+        };
         if (kind === "ram") this.emit("ram", vehicle.id);
       }
-      if (this.arcade.undertaking && !this.attack && vehicle.lane === 0 && vehicle.cooldown <= 0 && vehicle.passTarget === null && vehicle.blockedFor > 4 && this.random() < 0.35 && this.canMerge(vehicle, 1)) {
+      if (
+        this.arcade.undertaking &&
+        !this.attack &&
+        vehicle.lane === 0 &&
+        vehicle.cooldown <= 0 &&
+        vehicle.passTarget === null &&
+        vehicle.blockedFor > 4 &&
+        this.random() < 0.35 &&
+        this.canMerge(vehicle, 1)
+      ) {
         const right = this.leader(vehicle, 1);
         if (!right || right.gap > front.gap + 15) {
           vehicle.passTarget = front.vehicle.id;
@@ -276,7 +347,8 @@ export class Simulation {
   ): { vehicle: Vehicle; gap: number } | null {
     let result: { vehicle: Vehicle; gap: number } | null = null;
     for (const other of this.vehicles) {
-      if (other.crashed || other.id === vehicle.id || other.lane !== lane) continue;
+      if (other.crashed || other.id === vehicle.id || other.lane !== lane)
+        continue;
       const gap =
         this.distance(vehicle.x, other.x) - (vehicle.length + other.length) / 2;
       if (!result || gap < result.gap) result = { vehicle: other, gap };
@@ -285,26 +357,29 @@ export class Simulation {
   }
 
   private canMerge(vehicle: Vehicle, lane: 0 | 1): boolean {
+    const headway = vehicle.passTarget !== null ? 0.3 : 1.2;
+    const minimumGap = vehicle.passTarget !== null ? 8 : 15;
     const front = this.leader(vehicle, lane);
     if (
       front &&
       front.gap <
         Math.max(
-          15,
-          vehicle.speed * 1.2 +
+          minimumGap,
+          vehicle.speed * headway +
             Math.max(0, vehicle.speed - front.vehicle.speed) * 2,
         )
     )
       return false;
     for (const rear of this.vehicles) {
-      if (rear.crashed || rear.id === vehicle.id || rear.lane !== lane) continue;
+      if (rear.crashed || rear.id === vehicle.id || rear.lane !== lane)
+        continue;
       const gap =
         this.distance(rear.x, vehicle.x) - (vehicle.length + rear.length) / 2;
       if (
         gap <
         Math.max(
-          15,
-          rear.speed * 1.2 + Math.max(0, rear.speed - vehicle.speed) * 2,
+          minimumGap,
+          rear.speed * headway + Math.max(0, rear.speed - vehicle.speed) * 2,
         )
       )
         return false;
@@ -343,12 +418,22 @@ export class Simulation {
       if (vehicle.crashed) continue;
       vehicle.cooldown -= dt;
       vehicle.desiredSpeed = this.desired(vehicle);
-      if (this.attack && (vehicle.id === this.attack.actorId || vehicle.kind === "blocker")) continue;
+      if (
+        this.attack &&
+        (vehicle.id === this.attack.actorId || vehicle.kind === "blocker")
+      )
+        continue;
       if (vehicle.cooldown > 0) continue;
       if (vehicle.kind === "blocker" && this.phase === "blocking") continue;
       if (vehicle.passTarget !== null) {
-        const target = this.vehicles.find(other => other.id === vehicle.passTarget);
-        const passed = !target || target.crashed || this.distance(target.x, vehicle.x) < ROAD_LENGTH / 2;
+        const target = this.vehicles.find(
+          (other) => other.id === vehicle.passTarget,
+        );
+        const passed =
+          !target ||
+          target.crashed ||
+          target.lane === 1 ||
+          this.distance(target.x, vehicle.x) < ROAD_LENGTH / 2;
         if (passed && this.canMerge(vehicle, 0)) {
           vehicle.lane = 0;
           vehicle.cooldown = 5;
@@ -384,54 +469,63 @@ export class Simulation {
       }
     }
 
-    const updates = this.vehicles.filter(vehicle => !vehicle.crashed).map((vehicle) => {
-      let front = this.leader(vehicle);
-      const ramming = this.attack?.kind === "ram" && this.attack.actorId === vehicle.id && front?.vehicle.kind === "blocker";
-      if (ramming) front = null;
-      // Treat nearby left-lane traffic as a virtual leader: no passing on the right.
-      if (vehicle.lane === 1) {
-        const left = this.leader(vehicle, 0);
-        if (
-          left &&
-          vehicle.passTarget === null &&
-          left.gap < 100 &&
-          left.vehicle.speed < vehicle.speed + 1 &&
-          (!front || left.gap < front.gap)
-        )
-          front = left;
-        // A signaled return right prompts the following driver to open a gap.
-        if (this.phase === "overtaking") {
-          const gap =
-            this.distance(vehicle.x, this.blocker.x) -
-            (vehicle.length + this.blocker.length) / 2;
-          if (gap < 100 && (!front || gap <= front.gap))
-            front = { vehicle: this.blocker, gap };
+    const updates = this.vehicles
+      .filter((vehicle) => !vehicle.crashed)
+      .map((vehicle) => {
+        let front = this.leader(vehicle);
+        const ramming =
+          this.attack?.kind === "ram" &&
+          this.attack.actorId === vehicle.id &&
+          front?.vehicle.kind === "blocker";
+        if (ramming) front = null;
+        // Treat nearby left-lane traffic as a virtual leader: no passing on the right.
+        if (vehicle.lane === 1) {
+          const left = this.leader(vehicle, 0);
+          if (
+            left &&
+            vehicle.passTarget === null &&
+            left.gap < 100 &&
+            left.vehicle.speed < vehicle.speed + 1 &&
+            (!front || left.gap < front.gap)
+          )
+            front = left;
+          // A signaled return right prompts the following driver to open a gap.
+          if (this.phase === "overtaking") {
+            const gap =
+              this.distance(vehicle.x, this.blocker.x) -
+              (vehicle.length + this.blocker.length) / 2;
+            if (gap < 100 && (!front || gap <= front.gap))
+              front = { vehicle: this.blocker, gap };
+          }
         }
-      }
-      const desired = Math.max(kmh(10), ramming ? this.blocker.speed + kmh(35) : vehicle.desiredSpeed);
-      let acceleration = 1.8 * (1 - (vehicle.speed / desired) ** 4);
-      if (front) {
-        const closing = vehicle.speed - front.vehicle.speed;
-        const yielding =
-          vehicle.lane === 1 &&
-          front.vehicle.kind === "blocker" &&
-          this.phase === "overtaking";
-        const safeGap =
-          3 +
-          Math.max(
-            0,
-            vehicle.speed * (yielding ? 2.2 : 1.15) +
-              (vehicle.speed * closing) / (2 * Math.sqrt(1.8 * 2.5)),
-          );
-        acceleration -= 1.8 * (safeGap / Math.max(0.5, front.gap)) ** 2;
-      }
-      acceleration = Math.max(-8, Math.min(1.8, acceleration));
-      let speed = Math.max(0, vehicle.speed + acceleration * dt);
-      const actualFront = this.leader(vehicle);
-      if (actualFront && !ramming)
-        speed = Math.min(speed, Math.max(0, (actualFront.gap - 1) / dt));
-      return { vehicle, speed, acceleration };
-    });
+        const desired = Math.max(
+          kmh(10),
+          ramming ? this.blocker.speed + kmh(35) : vehicle.desiredSpeed,
+        );
+        let acceleration = 1.8 * (1 - (vehicle.speed / desired) ** 4);
+        if (front) {
+          const closing = vehicle.speed - front.vehicle.speed;
+          const yielding =
+            vehicle.lane === 1 &&
+            front.vehicle.kind === "blocker" &&
+            this.phase === "overtaking";
+          const safeGap =
+            3 +
+            Math.max(
+              0,
+              vehicle.speed *
+                (yielding ? 2.2 : vehicle.passTarget !== null ? 0.55 : 1.15) +
+                (vehicle.speed * closing) / (2 * Math.sqrt(1.8 * 2.5)),
+            );
+          acceleration -= 1.8 * (safeGap / Math.max(0.5, front.gap)) ** 2;
+        }
+        acceleration = Math.max(-8, Math.min(1.8, acceleration));
+        let speed = Math.max(0, vehicle.speed + acceleration * dt);
+        const actualFront = this.leader(vehicle);
+        if (actualFront && !ramming)
+          speed = Math.min(speed, Math.max(0, (actualFront.gap - 1) / dt));
+        return { vehicle, speed, acceleration };
+      });
     for (const { vehicle, speed, acceleration } of updates) {
       vehicle.speed = speed;
       vehicle.braking = acceleration < -0.65;
@@ -440,8 +534,12 @@ export class Simulation {
         (vehicle.lane - vehicle.visualLane) * Math.min(1, dt * 2.2);
     }
     if (this.attack?.kind === "ram") {
-      const actor = this.vehicles.find(vehicle => vehicle.id === this.attack!.actorId)!;
-      const gap = this.distance(actor.x, this.blocker.x) - (actor.length + this.blocker.length) / 2;
+      const actor = this.vehicles.find(
+        (vehicle) => vehicle.id === this.attack!.actorId,
+      )!;
+      const gap =
+        this.distance(actor.x, this.blocker.x) -
+        (actor.length + this.blocker.length) / 2;
       if (gap <= 1.5) {
         actor.speed = Math.min(actor.speed, this.blocker.speed);
         this.crashBlocker();
@@ -451,7 +549,7 @@ export class Simulation {
   }
 
   get metrics(): { speed: number; queue: number; flow: number } {
-    const active = this.vehicles.filter(vehicle => !vehicle.crashed);
+    const active = this.vehicles.filter((vehicle) => !vehicle.crashed);
     const speed =
       active.reduce((sum, vehicle) => sum + vehicle.speed * 3.6, 0) /
       Math.max(1, active.length);
