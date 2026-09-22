@@ -2,6 +2,8 @@
 
 A top-down, interactive highway simulation built with HTML, TypeScript, Canvas 2D, and Vite. Start with an 80 km/h limit and a driver holding the left lane at 75 km/h. Watch traffic build up, then let that driver finish overtaking and return right.
 
+**[Play the simulator online](https://firepol-ai.github.io/simulator-highway/)** — no installation needed.
+
 ## Run locally
 
 Requires Node.js 22.18+ (or Node.js 24+) and npm.
@@ -39,3 +41,22 @@ npm run build
 To use an existing Chromium installation, set `CHROMIUM_PATH` when running the browser tests, for example `CHROMIUM_PATH=/usr/bin/chromium-browser npm run test:e2e`.
 
 The build produces a static site in `dist/`. `npm run preview` serves it locally. Fonts load from Google Fonts with local sans-serif fallbacks. No backend or API keys are needed.
+
+## Publish with GitHub Pages
+
+The repository includes a [GitHub Actions deployment workflow](.github/workflows/deploy.yml). It tests and builds the app, then publishes `dist/` to GitHub Pages whenever `master` is pushed. Relative asset URLs allow the site to run under `/simulator-highway/`.
+
+For the initial setup:
+
+1. Create the public GitHub repository `firepol-ai/simulator-highway` without adding an initial README or other files.
+2. Connect this checkout and push it:
+
+   ```sh
+   git remote add origin git@github.com:firepol-ai/simulator-highway.git
+   git push -u origin master
+   ```
+
+3. Open the repository’s **Settings → Pages** and choose **GitHub Actions** as the build and deployment source.
+4. Open **Actions → Deploy to GitHub Pages → Run workflow**, choose `master`, and run it. A successful deployment publishes [the playable website](https://firepol-ai.github.io/simulator-highway/).
+
+After setup, commit your changes and run `git push origin master` to update the live website. You can check progress in the repository’s **Actions** tab. See the [Vite deployment guide](https://vite.dev/guide/static-deploy#github-pages) for the hosting setup.
