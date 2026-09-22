@@ -1176,3 +1176,26 @@ dialog p {
     margin-left: auto;
   }
 }
+
+.swiss-flag { background: none; width: 32px; height: 32px; font-size: 28px; font-weight: normal; }
+.view-tools, .playback-right { display: flex; align-items: center; gap: 14px; }
+.view-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 11px; border: 1px solid #dbe3d0; background: #f2f5ea; border-radius: 6px; font-size: 10px; color: #4d6b42; }
+.view-button:hover { background: #e5eddb; }
+[hidden] { display: none !important; }
+#map-controls { position: fixed; z-index: 25; right: 14px; top: 64px; width: 300px; max-height: calc(100dvh - 130px); overflow-y: auto; overscroll-behavior: contain; background: #f7f8f2; padding: 12px; border: 1px solid #d9e1cf; border-radius: 12px; box-shadow: 0 10px 40px #283f302e; }
+#map-controls > .view-button { margin: 0 0 10px auto; display: flex; }
+#map-controls .settings { display: block; width: auto; padding: 18px; }
+#map-controls .blocker-setting { margin: 0; }
+#map-controls .arcade-panel { margin-top: 12px; padding: 14px; }
+#map-controls .arcade-heading { flex-wrap: wrap; }
+#map-controls .arcade-options { grid-template-columns: 1fr; }
+.winding-mode { overflow: hidden; }
+.winding-mode .site-header, .winding-mode .intro, .winding-mode footer, .winding-mode .metrics, .winding-mode .chart-panel { display: none; }
+.winding-mode .simulation-panel { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column; border: none; border-radius: 0; }
+.winding-mode .simulation-toolbar, .winding-mode .playback-toolbar { flex: 0 0 50px; }
+.winding-mode .road-container { flex: 1; min-height: 0; height: auto; }
+.winding-mode .intervention { position: fixed; z-index: 15; left: 20px; bottom: 67px; max-width: min(650px, calc(100vw - 40px)); margin: 0; padding: 13px 16px; background: #f5f7ecf2; box-shadow: 0 4px 18px #344c3020; }
+.winding-mode .road-scale { bottom: 13px; }
+#map-summary { font-size: 10px; color: #758368; white-space: nowrap; }
+@media (max-width: 800px) { .view-tools { gap: 8px; } .view-button { padding: 7px 8px; font-size: 9px; } .winding-mode .intervention { left: 12px; bottom: 61px; max-width: calc(100vw - 24px); } .winding-mode .intervention-copy { flex-basis: auto; } .winding-mode .primary-button { width: auto; } #map-summary { display: none; } }
+@media (max-width: 600px) { .settings .right-driver-setting { grid-column: 1; } .right-driver-setting + .blocker-setting { grid-row: 3 / 6; } .winding-mode .live-label { font-size: 8px; letter-spacing: .5px; } .winding-mode .intervention-copy p { display: none; } .winding-mode .intervention { gap: 8px; padding: 10px; } .playback-right { gap: 7px; } #map-controls { width: min(310px, calc(100vw - 24px)); } }

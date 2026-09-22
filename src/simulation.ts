@@ -3,6 +3,7 @@ export interface Settings {
   blockerSpeed: number;
   fasterSpeed: number;
   vehicleCount: number;
+  rightLaneSpeed?: number;
 }
 
 export interface Vehicle {
@@ -90,6 +91,7 @@ const kmh = (value: number) => value / 3.6;
 /** Illustrative IDM car following on a periodic two-lane road. */
 export class Simulation {
   settings: Settings;
+  readonly roadLength: number;
   vehicles: Vehicle[] = [];
   time = 0;
   releaseTime: number | null = null;
@@ -109,7 +111,9 @@ export class Simulation {
   constructor(
     settings: Settings = DEFAULT_SETTINGS,
     arcade: ArcadeOptions = DEFAULT_ARCADE,
+    roadLength = ROAD_LENGTH,
   ) {
+    this.roadLength = roadLength;
     this.settings = { ...settings };
     this.arcade = { ...arcade };
     this.reset();
@@ -157,7 +161,7 @@ export class Simulation {
         kind === "blocker"
           ? this.settings.blockerSpeed
           : kind === "truck"
-            ? this.settings.speedLimit - 12
+            ? this.settings.rightLaneSpeed ?? this.settings.speedLimit - 12
             : fast
               ? this.settings.fasterSpeed
               : this.settings.speedLimit - (id % 3) * 2;
@@ -181,22 +185,23 @@ export class Simulation {
         crashed: false,
       });
     };
-    add(660, 0, "blocker", false);
-    add(665, 1, "truck", false);
+    const blockerX = this.roadLength * 0.55;
+    add(blockerX, 0, "blocker", false);
+    add(blockerX + 5, 1, "truck", false);
     const leftCount = Math.round((this.settings.vehicleCount - 2) * 0.55);
     const rightCount = this.settings.vehicleCount - 2 - leftCount;
     for (let i = 0; i < leftCount; i++)
       add(
-        (600 - i * (1050 / leftCount) + ROAD_LENGTH) % ROAD_LENGTH,
+        (blockerX - 60 - i * ((this.roadLength - 150) / leftCount) + this.roadLength) % this.roadLength,
         0,
         "car",
         true,
       );
     for (let i = 0; i < rightCount; i++)
       add(
-        (590 - i * (1050 / rightCount) + ROAD_LENGTH) % ROAD_LENGTH,
+        (blockerX - 70 - i * ((this.roadLength - 150) / rightCount) + this.roadLength) % this.roadLength,
         1,
-        i === 5 ? "truck" : "car",
+        (i === 5 || (this.roadLength > ROAD_LENGTH && i % 11 === 5)) ? "truck" : "car",
         i % 3 === 0,
       );
     this.recordSample();
@@ -244,7 +249,7 @@ export class Simulation {
     };
     let placed = false;
     if (traffic.length === 0) {
-      next.x = 660;
+      next.x = this.roadLength * 0.55;
       next.speed = next.desiredSpeed;
       placed = true;
     }
@@ -254,7 +259,7 @@ export class Simulation {
         front: traffic[(index + 1) % traffic.length],
         length:
           traffic.length === 1
-            ? ROAD_LENGTH
+            ? this.roadLength
             : this.distance(rear.x, traffic[(index + 1) % traffic.length].x),
       }))
       .sort((a, b) => b.length - a.length);
@@ -276,7 +281,7 @@ export class Simulation {
       if (length < rearSpace + frontSpace + 2) continue;
       next.x =
         (rear.x + rearSpace + (length - rearSpace - frontSpace) / 2) %
-        ROAD_LENGTH;
+        this.roadLength;
       if (this.canMerge(next, 0)) {
         placed = true;
         break;
@@ -452,7 +457,7 @@ export class Simulation {
   }
 
   private distance(from: number, to: number): number {
-    return (to - from + ROAD_LENGTH) % ROAD_LENGTH;
+    return (to - from + this.roadLength) % this.roadLength;
   }
 
   leader(
@@ -511,7 +516,7 @@ export class Simulation {
             ? Math.max(speedLimit, blockerSpeed, fasterSpeed)
             : speedLimit,
       );
-    if (vehicle.kind === "truck") return kmh(speedLimit - 12);
+    if (vehicle.kind === "truck") return kmh(this.settings.rightLaneSpeed ?? speedLimit - 12);
     return kmh(vehicle.fast ? fasterSpeed : speedLimit - (vehicle.id % 3) * 2);
   }
 
@@ -559,7 +564,7 @@ export class Simulation {
         const ahead = this.distance(target.x, vehicle.x);
         const passed =
           ahead > (vehicle.length + target.length) / 2 + 8 &&
-          ahead < ROAD_LENGTH / 2;
+          ahead < this.roadLength / 2;
         if (passed && this.canMerge(vehicle, 0)) {
           vehicle.lane = 0;
           vehicle.cooldown = 5;
@@ -664,7 +669,7 @@ export class Simulation {
     for (const { vehicle, speed, acceleration } of updates) {
       vehicle.speed = speed;
       vehicle.braking = acceleration < -0.65;
-      vehicle.x = (vehicle.x + speed * dt) % ROAD_LENGTH;
+      vehicle.x = (vehicle.x + speed * dt) % this.roadLength;
       vehicle.visualLane +=
         (vehicle.lane - vehicle.visualLane) * Math.min(1, dt * 2.2);
     }
@@ -695,7 +700,7 @@ export class Simulation {
     return {
       speed,
       queue,
-      flow: (speed * active.length) / (ROAD_LENGTH / 1000),
+      flow: (speed * active.length) / (this.roadLength / 1000),
     };
   }
 
