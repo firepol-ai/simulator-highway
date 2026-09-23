@@ -466,6 +466,9 @@ test("spawning waits rather than inserting a blocker into a full lane", () => {
   assert.deepEqual(sim.vehicles, vehicles);
   assert.equal(sim.phase, "crashed");
   assert.equal(sim.wrecks.length, 1);
+  assert.equal(sim.spawning, true);
+  sim.reset();
+  assert.equal(sim.spawning, false);
 });
 
 test("the same blocker can repeatedly clear and reoccupy without resetting traffic", () => {

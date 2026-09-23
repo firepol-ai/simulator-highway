@@ -348,3 +348,39 @@ test("winding controls remain usable on mobile and after rotation", async ({
   await page.locator("#view-switch").click();
   await expect(page.getByRole("slider", { name: "Speed limit" })).toBeVisible();
 });
+
+test("800-vehicle winding mode shows pending spawns and completes them after resuming", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#view-switch").click();
+  await page.locator("#map-controls-toggle").click();
+  await page.getByRole("slider", { name: "Traffic density" }).fill("800");
+  await expect(page.locator("#vehicle-count-value")).toHaveText("800");
+  await page.getByRole("checkbox", { name: "007 mode", exact: true }).check();
+  await page.locator("#close-map-controls").click();
+  await page.getByRole("button", { name: "5×" }).click();
+  await expect(page.locator("#road-status")).toHaveText(
+    "Blocker crashed off-road",
+    { timeout: 20000 },
+  );
+  await page.getByRole("button", { name: "Pause simulation" }).click();
+  await page.getByRole("button", { name: "Spawn new blocker" }).click();
+  await expect(
+    page.getByRole("button", { name: "Waiting for gap…" }),
+  ).toBeDisabled();
+  await expect(page.locator("#action-title")).toHaveText(
+    "Resume to open a gap.",
+  );
+  await expect(page.locator("#action-title")).toBeVisible();
+  await page.getByRole("button", { name: "Resume simulation" }).click();
+  await expect(page.locator("#road-status")).toHaveText("Left lane blocked", {
+    timeout: 15000,
+  });
+  await expect(page.locator("#spawn-blocker")).toBeHidden();
+  await expect(page.locator("#release")).toBeEnabled();
+  expect(errors).toEqual([]);
+});

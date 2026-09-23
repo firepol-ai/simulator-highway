@@ -422,6 +422,7 @@ export class Simulation {
       }
       if (
         this.arcade.undertaking &&
+        vehicle.id !== this.spawnYieldId &&
         !this.attack &&
         vehicle.lane === 0 &&
         vehicle.cooldown <= 0 &&
