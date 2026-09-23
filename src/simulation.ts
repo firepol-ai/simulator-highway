@@ -21,6 +21,7 @@ export interface Vehicle {
   color: string;
   blockedFor: number;
   signalUntil: number;
+  yieldUntil: number;
   nextSignal: number;
   passTarget: number | null;
   crashed: boolean;
@@ -176,7 +177,7 @@ export class Simulation {
             ? (this.settings.rightLaneSpeed ?? this.settings.speedLimit - 12)
             : fast
               ? this.settings.fasterSpeed
-              : this.settings.speedLimit - (id % 3) * 2;
+              : this.settings.speedLimit;
       this.vehicles.push({
         id,
         x,
@@ -192,6 +193,7 @@ export class Simulation {
         color: COLORS[id % COLORS.length],
         blockedFor: 0,
         signalUntil: 0,
+        yieldUntil: 0,
         nextSignal: 0,
         passTarget: null,
         crashed: false,
@@ -211,7 +213,7 @@ export class Simulation {
           this.roadLength,
         0,
         "car",
-        true,
+        i % 3 === 0,
       );
     for (let i = 0; i < rightCount; i++)
       add(
@@ -263,6 +265,7 @@ export class Simulation {
       crashed: false,
       blockedFor: 0,
       signalUntil: 0,
+      yieldUntil: 0,
       nextSignal: 0,
       passTarget: null,
       cooldown: 3,
@@ -391,6 +394,16 @@ export class Simulation {
     for (const vehicle of this.vehicles) {
       if (vehicle.kind !== "car" || vehicle.crashed) continue;
       const front = this.leader(vehicle);
+      // A faster car already on the right may pass a slower left-lane leader
+      // instead of braking behind that car's virtual no-passing constraint.
+      if (check && this.arcade.undertaking && vehicle.fast && vehicle.lane === 1 && vehicle.passTarget === null && vehicle.cooldown <= 0) {
+        const left = this.leader(vehicle, 0);
+        if (left && left.gap > 0 && left.gap < 120 && left.vehicle.speed < vehicle.desiredSpeed - kmh(5) && (!front || front.gap > left.gap + 15)) {
+          vehicle.passTarget = left.vehicle.id;
+          vehicle.cooldown = 2;
+          this.emit("undertake", vehicle.id, left.vehicle.id);
+        }
+      }
       const blocked =
         front &&
         front.gap < 100 &&
@@ -422,6 +435,7 @@ export class Simulation {
       }
       if (
         this.arcade.undertaking &&
+        vehicle.fast &&
         vehicle.id !== this.spawnYieldId &&
         !this.attack &&
         vehicle.lane === 0 &&
@@ -429,7 +443,7 @@ export class Simulation {
         vehicle.passTarget === null &&
         vehicle.blockedFor > 4 &&
         this.random() < 0.35 &&
-        this.canMerge(vehicle, 1)
+        this.canMerge(vehicle, 1, true)
       ) {
         const right = this.leader(vehicle, 1);
         // An impatient driver switches only when nearby right-lane traffic is
@@ -464,6 +478,7 @@ export class Simulation {
     for (const vehicle of this.vehicles) {
       if (
         vehicle.kind !== "car" ||
+        !vehicle.fast ||
         vehicle.crashed ||
         vehicle.lane !== 0 ||
         vehicle.visualLane > 0.1 ||
@@ -482,6 +497,8 @@ export class Simulation {
       vehicle.signalUntil = this.time + 1.4;
       vehicle.nextSignal = this.time + 5 + this.random() * 5;
       this.emit("horn", vehicle.id, front.vehicle.id);
+      if (front.vehicle.kind === "car" && !front.vehicle.fast && this.random() < 0.65)
+        front.vehicle.yieldUntil = this.time + 8;
     }
   }
 
@@ -536,9 +553,9 @@ export class Simulation {
     return result;
   }
 
-  private canMerge(vehicle: Vehicle, lane: 0 | 1): boolean {
-    const headway = vehicle.passTarget !== null ? 0.3 : 1.2;
-    const minimumGap = vehicle.passTarget !== null ? 8 : 15;
+  private canMerge(vehicle: Vehicle, lane: 0 | 1, impatient = vehicle.passTarget !== null): boolean {
+    const headway = impatient ? 0.3 : 1.2;
+    const minimumGap = impatient ? 8 : 15;
     const front = this.leader(vehicle, lane);
     if (
       front &&
@@ -579,7 +596,7 @@ export class Simulation {
       );
     if (vehicle.kind === "truck")
       return kmh(this.settings.rightLaneSpeed ?? speedLimit - 12);
-    return kmh(vehicle.fast ? fasterSpeed : speedLimit - (vehicle.id % 3) * 2);
+    return kmh(vehicle.fast ? fasterSpeed : speedLimit);
   }
 
   step(dt: number): void {
@@ -606,7 +623,8 @@ export class Simulation {
         (vehicle.id === this.attack.actorId || vehicle.kind === "blocker")
       )
         continue;
-      if (vehicle.id === this.spawnYieldId || vehicle.cooldown > 0) continue;
+      const yieldingToFaster = this.arcade.signals && vehicle.kind === "car" && !vehicle.fast && vehicle.yieldUntil > this.time;
+      if (vehicle.id === this.spawnYieldId || (vehicle.cooldown > 0 && !yieldingToFaster)) continue;
       if (vehicle.kind === "blocker" && this.phase === "blocking") continue;
       if (vehicle.kind === "blocker" && this.phase === "returning") {
         if (this.canMerge(vehicle, 0)) {
@@ -656,6 +674,7 @@ export class Simulation {
         const right = this.leader(vehicle, 1);
         const wantsRight =
           vehicle.kind === "blocker" ||
+          yieldingToFaster ||
           !right ||
           right.gap > vehicle.speed * 5 ||
           right.vehicle.speed >= vehicle.desiredSpeed - 1;
@@ -694,6 +713,12 @@ export class Simulation {
           )
             front = left;
         }
+        // Once alongside an available right-lane slot, match its leader rather
+        // than repeatedly accelerating past every gap while trying to clear.
+        if (vehicle.kind === "blocker" && this.phase === "overtaking") {
+          const right = this.leader(vehicle, 1);
+          if (right && right.gap > 0 && right.gap < vehicle.speed * 4 && (!front || right.gap < front.gap)) front = right;
+        }
         // A requested lane change prompts the following driver in that lane to yield.
         const yieldingLane =
           this.phase === "overtaking"
@@ -725,7 +750,9 @@ export class Simulation {
                 (yielding ? 2.2 : vehicle.passTarget !== null ? 0.55 : 1.15) +
                 (vehicle.speed * closing) / (2 * Math.sqrt(1.8 * 2.5)),
             );
-          acceleration -= 1.8 * (safeGap / Math.max(0.5, front.gap)) ** 2;
+          // Independent free-speed and following constraints: distant traffic
+          // must not reduce a driver's cruising target before it is caught.
+          acceleration = Math.min(acceleration, 1.8 * (1 - (safeGap / Math.max(0.5, front.gap)) ** 2));
         }
         if (vehicle.id === this.spawnYieldId)
           acceleration = Math.min(acceleration, -2.5);

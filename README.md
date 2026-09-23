@@ -31,8 +31,8 @@ Open the local URL printed by Vite, normally `http://localhost:5173`.
 
 The **A little less civilised** panel adds four independent switches, all off by default:
 
-- **Random right-side passing:** some held-back left-lane drivers try the right lane when nearby traffic there is faster or nearly as fast (within 5 km/h). They use shorter following and merge gaps, then move back left only after fully clearing the car they were following. Available space and slower right-lane traffic affect whether a pass can succeed.
-- **Horns & flashing lights:** frustrated drivers in the left lane honk and flash at the car ahead in that lane. Drivers cruising on the right are left alone. The light beams and horn rings work even with sound muted.
+- **Impatient right-side passing:** only held-back faster drivers in the left lane try the right lane when nearby traffic there is faster or nearly as fast (within 5 km/h). They use shorter following and merge gaps, then move back left only after fully clearing the car they were following. Available space and slower right-lane traffic affect whether a pass can succeed.
+- **Horns & flashing lights:** only frustrated faster drivers in the left lane honk and flash at the car ahead in that lane. Some ordinary, limit-respecting drivers respond by moving right through a safe gap. The blocker ignores these signals until you select Clear the left lane. Drivers cruising on the right are left alone. The light beams and horn rings work even with sound muted.
 - **Crazy road rage:** after waiting behind the blocker, the following car may accelerate into it. The blocker skids off-road with sparks, smoke, and a wreck.
 - **007 mode:** the car directly behind the blocker may fire a short machine-gun burst before the blocker crashes off-road. When both crash modes are enabled, one is randomly selected for the encounter.
 
@@ -42,7 +42,7 @@ Behavior switches take effect without restarting. Disabling a crash mode cancels
 
 ### Traffic model
 
-Vehicles follow a simplified Intelligent Driver Model, with desired speeds, acceleration limits, closing-speed-dependent headways, and gap checks for lane changes. Faster drivers overtake left and return right. A virtual leader discourages passing slower left-lane traffic on the right. The blocking driver remains left until released.
+Vehicles follow an illustrative model with separate free-speed and following constraints, acceleration limits, closing-speed-dependent headways, and gap checks for lane changes. Ordinary cars target the general speed limit; a third of the cars in each initial lane target the faster-driver setting. Distant traffic does not lower a car’s cruising target; cars slow as they approach a leader or its queue. At very high density, following space still limits speed even without a blocker. Faster drivers overtake left and return right. A virtual leader discourages passing slower left-lane traffic on the right. The blocking driver remains left until released.
 
 The original road is a deterministic, repeating 1.2 km loop with a fixed number of vehicles. Cars are enlarged for readability; the visualization is schematic. In the original mode, narrow displays show a closer view that follows the blocker. Winding mode shows the entire 6 km circuit; its bends are a visual layout and do not impose cornering speed limits. Vehicle sizes are schematic and do not scale with simulated distance. This is an illustrative model, not a calibrated forecast or a complete implementation of traffic law. Desired speeds above the chosen limit represent driver behavior, not advice. The right-lane slow-driver control sets the trucks’ desired speed (108 km/h by default), independently of the general limit. Trucks can still be slowed by vehicles ahead. Cars more than 8 km/h below their desired speed count as held back. Flow is estimated as vehicle density multiplied by average speed; it is not detector-measured throughput.
 

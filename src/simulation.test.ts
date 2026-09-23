@@ -644,3 +644,74 @@ test("indexed traffic matches the full neighbour scan through lane changes and a
   assert.deepEqual(indexed.events, reference.events);
   assert.deepEqual(indexed.samples, reference.samples);
 });
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: drivers hold their targets until catching the blocker queue`, () => {
+    const sim = new Simulation(DEFAULT_SETTINGS, DEFAULT_ARCADE, roadLength);
+    const fast = sim.vehicles[2], regular = sim.vehicles[3];
+    assert.equal(fast.fast, true);
+    assert.equal(regular.fast, false);
+    assert.ok(Math.abs(regular.desiredSpeed * 3.6 - sim.settings.speedLimit) < 1e-8);
+    sim.vehicles = [sim.blocker, fast, regular];
+    Object.assign(sim.blocker, { x: 600, cooldown: 1000 });
+    Object.assign(fast, { x: 100, cooldown: 1000 });
+    Object.assign(regular, { x: 300, cooldown: 1000 });
+    advance(sim, 10);
+    assert.ok(fast.speed * 3.6 > 134.9);
+    assert.ok(regular.speed * 3.6 > 119.9);
+    advance(sim, 150);
+    assert.ok(fast.speed * 3.6 < 112);
+    assert.ok(regular.speed * 3.6 < 112);
+    assert.ok(sim.leader(fast)!.gap < 70);
+    assert.ok(sim.leader(regular)!.gap < 70);
+  });
+
+  for (const initialLane of [0, 1] as const) {
+    test(`${roadLength}m: faster drivers accelerate on the right and complete a real pass from lane ${initialLane}`, () => {
+      const sim = new Simulation({ ...DEFAULT_SETTINGS, fasterSpeed: 180, blockerSpeed: 75 }, { ...DEFAULT_ARCADE, undertaking: true }, roadLength);
+      const actor = sim.vehicles[2];
+      sim.vehicles = [sim.blocker, actor];
+      Object.assign(sim.blocker, { x: 500 });
+      Object.assign(actor, { x: 450, speed: 75 / 3.6, lane: initialLane, visualLane: initialLane, blockedFor: 5, cooldown: 0 });
+      let rightSpeed = 0;
+      for (let i = 0; i < 1200 && !sim.events.some(e => e.kind === "return"); i++) {
+        sim.step(0.05);
+        if (actor.lane === 1) rightSpeed = Math.max(rightSpeed, actor.speed * 3.6);
+        assert.ok((sim.leader(actor)?.gap ?? Infinity) >= 1 - 1e-8);
+      }
+      assert.ok(sim.events.some(e => e.kind === "undertake" && e.actorId === actor.id));
+      assert.ok(sim.events.some(e => e.kind === "return" && e.actorId === actor.id));
+      assert.ok(rightSpeed > 90, `right-lane speed ${rightSpeed}`);
+      assert.equal(actor.lane, 0);
+      const ahead = (actor.x - sim.blocker.x + roadLength) % roadLength;
+      assert.ok(ahead > (actor.length + sim.blocker.length) / 2 + 8 && ahead < roadLength / 2);
+    });
+  }
+
+  test(`${roadLength}m: ordinary drivers neither undertake nor signal`, () => {
+    const sim = new Simulation({ ...DEFAULT_SETTINGS, blockerSpeed: 75 }, { ...DEFAULT_ARCADE, undertaking: true, signals: true }, roadLength);
+    const ordinary = sim.vehicles[3];
+    sim.vehicles = [sim.blocker, ordinary];
+    Object.assign(sim.blocker, { x: 500 });
+    Object.assign(ordinary, { x: 450, speed: 75 / 3.6, blockedFor: 10, cooldown: 1000 });
+    advance(sim, 30);
+    assert.equal(sim.events.filter(e => e.kind === "horn" || e.kind === "undertake").length, 0);
+    assert.equal(ordinary.signalUntil, 0);
+  });
+
+  test(`${roadLength}m: a signalled ordinary driver yields safely but the blocker does not`, () => {
+    const sim = new Simulation(DEFAULT_SETTINGS, { ...DEFAULT_ARCADE, signals: true }, roadLength);
+    const actor = sim.vehicles[2], ordinary = sim.vehicles[3], truck = sim.vehicles[1];
+    sim.vehicles = [sim.blocker, actor, ordinary, truck];
+    Object.assign(sim.blocker, { x: 900 });
+    Object.assign(actor, { x: 140, speed: 120 / 3.6, blockedFor: 10, cooldown: 1000 });
+    Object.assign(ordinary, { x: 200, cooldown: 1000 });
+    Object.assign(truck, { x: 300 });
+    for (let i = 0; i < 400 && ordinary.lane === 0; i++) sim.step(0.05);
+    assert.ok(sim.events.some(e => e.kind === "horn" && e.actorId === actor.id && e.targetId === ordinary.id));
+    assert.equal(ordinary.lane, 1);
+    assert.ok((sim.leader(ordinary)?.gap ?? Infinity) >= 15);
+    assert.equal(sim.blocker.lane, 0);
+    assert.equal(sim.blocker.yieldUntil, 0);
+  });
+}
