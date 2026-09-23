@@ -1062,3 +1062,48 @@ test("a slow blocker creates a local queue without slowing distant dense traffic
   assert.ok(distant.length > 100);
   assert.ok(distant.every((v) => v.speed * 3.6 > 119.9));
 });
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: impatient drivers promptly use a large right-side gap despite a slower truck farther ahead`, () => {
+    for (const space of [70, 180]) {
+      const sim = new Simulation(
+        { ...DEFAULT_SETTINGS, rightLaneSpeed: 98 },
+        { ...DEFAULT_ARCADE, undertaking: true },
+        roadLength,
+      );
+      const actor = sim.vehicles[2],
+        truck = sim.vehicles[1];
+      sim.vehicles = [sim.blocker, actor, truck];
+      Object.assign(sim.blocker, { x: 500 });
+      Object.assign(actor, {
+        x: 480,
+        speed: 110 / 3.6,
+        blockedFor: 2,
+        cooldown: 0,
+      });
+      Object.assign(truck, { x: 480 + space });
+      advance(sim, 2);
+      assert.equal(
+        sim.events.some(
+          (e) => e.kind === "undertake" && e.actorId === actor.id,
+        ),
+        space === 180,
+      );
+      if (space === 180) {
+        for (
+          let i = 0;
+          i < 600 && !sim.events.some((e) => e.kind === "return");
+          i++
+        )
+          sim.step(0.05);
+        assert.ok(
+          sim.events.some((e) => e.kind === "return" && e.actorId === actor.id),
+        );
+        assert.ok(
+          (actor.x - sim.blocker.x + roadLength) % roadLength < roadLength / 2,
+        );
+        assert.ok((sim.leader(actor)?.gap ?? Infinity) >= 1);
+      }
+    }
+  });
+}

@@ -400,6 +400,36 @@ export class Simulation {
     this.attack = null;
   }
 
+  private hasRoomToPassRight(
+    vehicle: Vehicle,
+    left: NonNullable<ReturnType<Simulation["leader"]>>,
+    right: ReturnType<Simulation["leader"]>,
+  ): boolean {
+    const relativeTarget = vehicle.desiredSpeed - left.vehicle.speed;
+    if (relativeTarget <= kmh(2)) return false;
+    if (!right) return true;
+    // Estimate the space needed to accelerate past the entire target, including
+    // clearance to return left. A slower truck far ahead need not veto the pass.
+    const gain = left.gap + vehicle.length + left.vehicle.length + 8;
+    const acceleration = 1.4;
+    const relativeNow = vehicle.speed - left.vehicle.speed;
+    const acceleratingFor =
+      Math.max(0, vehicle.desiredSpeed - vehicle.speed) / acceleration;
+    const gainWhileAccelerating =
+      relativeNow * acceleratingFor + 0.5 * acceleration * acceleratingFor ** 2;
+    const seconds =
+      gain <= gainWhileAccelerating
+        ? (-relativeNow +
+            Math.sqrt(relativeNow ** 2 + 2 * acceleration * gain)) /
+          acceleration
+        : acceleratingFor + (gain - gainWhileAccelerating) / relativeTarget;
+    const remaining =
+      right.gap + (right.vehicle.speed - left.vehicle.speed) * seconds - gain;
+    const closing = Math.max(0, vehicle.desiredSpeed - right.vehicle.speed);
+    const reserve = Math.max(8, 4 + closing * 0.25 + closing ** 2 / 8);
+    return remaining >= reserve;
+  }
+
   private advanceArcade(dt: number): boolean {
     if (this.attack) {
       const actor = this.vehicles.find(
@@ -432,7 +462,7 @@ export class Simulation {
           left.gap > 0 &&
           left.gap < 120 &&
           left.vehicle.speed < vehicle.desiredSpeed - kmh(5) &&
-          (!front || front.gap > left.gap + 15)
+          this.hasRoomToPassRight(vehicle, left, front)
         ) {
           vehicle.passTarget = left.vehicle.id;
           vehicle.cooldown = 2;
@@ -476,21 +506,12 @@ export class Simulation {
         vehicle.lane === 0 &&
         vehicle.cooldown <= 0 &&
         vehicle.passTarget === null &&
-        vehicle.blockedFor > 4 &&
-        this.random() < 0.35 &&
+        vehicle.blockedFor > 1.5 &&
+        this.random() < 0.8 &&
         this.canMerge(vehicle, 1, true)
       ) {
         const right = this.leader(vehicle, 1);
-        // An impatient driver switches only when nearby right-lane traffic is
-        // at least about as fast as the slower car ahead (within 5 km/h).
-        const rightSpeed =
-          right && right.gap < Math.max(120, vehicle.speed * 5)
-            ? right.vehicle.speed
-            : vehicle.desiredSpeed;
-        if (
-          front.vehicle.speed <= rightSpeed + kmh(5) &&
-          (!right || right.gap > front.gap + 15)
-        ) {
+        if (this.hasRoomToPassRight(vehicle, front, right)) {
           vehicle.passTarget = front.vehicle.id;
           vehicle.lane = 1;
           vehicle.cooldown = 2;
@@ -730,7 +751,17 @@ export class Simulation {
         vehicle.lane = 0;
         this.laneIndex = null;
         vehicle.cooldown = 5;
-      } else if (vehicle.lane === 0 && this.canMerge(vehicle, 1)) {
+      } else if (
+        vehicle.lane === 0 &&
+        this.canMerge(vehicle, 1) &&
+        !(
+          this.arcade.undertaking &&
+          vehicle.fast &&
+          front &&
+          front.gap < 100 &&
+          front.vehicle.speed < vehicle.desiredSpeed - kmh(5)
+        )
+      ) {
         const right = this.leader(vehicle, 1);
         // Ordinary drivers need not hold up an approaching faster car merely
         // because another right-lane pass will be needed farther down the road.
