@@ -396,3 +396,28 @@ test("800-vehicle winding mode replaces a crashed blocker with an immediate or q
   await expect(page.locator("#release")).toBeEnabled();
   expect(errors).toEqual([]);
 });
+
+test("straight mode supports 800 cars and preserves its count when switching views", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Pause simulation" }).click();
+  await expect(
+    page.getByRole("slider", { name: "Traffic density" }),
+  ).toHaveAttribute("max", "800");
+  await page.getByRole("slider", { name: "Traffic density" }).fill("800");
+  await expect(page.locator("#vehicle-count-value")).toHaveText("800");
+  await expect(page.locator(".road-scale")).toContainText("6 KM LOOP");
+  await page.locator("#view-switch").click();
+  await page.locator("#map-controls-toggle").click();
+  await expect(page.locator("#vehicle-count-value")).toHaveText("800");
+  await page.locator("#close-map-controls").click();
+  await page.locator("#view-switch").click();
+  await expect(page.locator("#vehicle-count-value")).toHaveText("800");
+  await page.getByRole("slider", { name: "Traffic density" }).fill("44");
+  await expect(page.locator(".road-scale")).toContainText("1.2 KM LOOP");
+  await expect(page.locator("#vehicle-count-value")).toHaveText("44");
+  expect(errors).toEqual([]);
+});

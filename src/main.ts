@@ -47,7 +47,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
         <div class="setting">
           <label for="vehicle-count">Traffic density <output class="value-pill" id="density-name">Moderate</output></label>
           <div class="range-value"><output id="vehicle-count-value" for="vehicle-count">26</output><span>vehicles on the road</span></div>
-          <input id="vehicle-count" type="range" min="12" max="44" step="2" value="26" />
+          <input id="vehicle-count" type="range" min="12" max="800" step="2" value="26" />
           <div class="range-ends"><span>Light</span><span>Heavy</span></div>
         </div>
         <div class="setting right-driver-setting">
@@ -95,12 +95,12 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
     <footer><span><span class="footer-dot"></span> A little perspective on the road we share.</span><div class="footer-links"><a class="text-button" href="https://github.com/firepol-ai/simulator-highway" target="_blank" rel="noopener noreferrer">Source on GitHub ↗</a><button class="text-button about-trigger">How it works ${icon("arrow", 14)}</button></div></footer>
   </main>
   <aside id="map-controls" aria-label="Winding road controls" hidden><button id="close-map-controls" class="view-button">Close controls ×</button></aside>
-  <dialog id="about-dialog"><button id="close-about" class="dialog-close" aria-label="Close explanation">×</button><div class="eyebrow">BEHIND THE EXPERIMENT</div><h2>Traffic is a chain reaction.</h2><p>Each car accelerates toward its desired speed and brakes according to its distance and closing speed to the car ahead. Faster drivers use the left lane to overtake, then return right when there is room. Right-lane cars also respond to slower traffic ahead on the left to discourage passing on the right.</p><p>The orange driver deliberately stays left until you select <strong>Clear the left lane</strong>. It then finishes the pass at a target no lower than its current setting or the faster drivers’ target, waits for a safe gap, and merges right. The limit and driver controls allow targets up to 300 km/h. “Right-lane slow drivers” sets the trucks’ desired speed independently. Recovery takes time as the following cars accelerate.</p><p>This is an illustrative, deterministic car-following model on a repeating 1.2 km road or a 6 km winding circuit, not a calibrated traffic forecast or a complete implementation of traffic law. Cars are enlarged for visibility. “Faster drivers” can exceed your selected limit to represent that behavior, not recommend it.</p><p>Select <strong>Winding road</strong> for a full-window circuit with more vehicles at the same density. Open <strong>Controls</strong> to adjust its settings. Each mode preserves its own traffic and pauses while you use the other. Bends are schematic: they do not impose cornering speed limits.</p><p><strong>Try it:</strong> run the default scene for 30–60 simulated seconds, release the driver, and compare the speed trace. Higher density and a slower blocker make the effect more noticeable. Other slow vehicles and dense traffic can still limit recovery.</p><p><strong>Arcade options:</strong> enable impatient right-side passing by faster drivers, their horns and headlight flashes, or fictional road-rage and 007 crash sequences. These start only after a driver is held up. Faster drivers flash three times before using the horn. Some ordinary drivers move right after the flashes, others after the horn, always waiting for a safe gap; the orange blocker stays put until released. Sound is opt-in. Releasing the blocker cancels an attack. After a crash, Spawn new blocker adds another driver while keeping the wreck and history; restart clears the scene. Behavior switches apply live, and reset keeps your selections.</p><p class="dialog-note">Settings restart the scene. Playback speed changes simulated time only. Traffic flow is a density-based estimate, not a count at a roadside detector.</p></dialog>
+  <dialog id="about-dialog"><button id="close-about" class="dialog-close" aria-label="Close explanation">×</button><div class="eyebrow">BEHIND THE EXPERIMENT</div><h2>Traffic is a chain reaction.</h2><p>Each car accelerates toward its desired speed and brakes according to its distance and closing speed to the car ahead. Faster drivers use the left lane to overtake, then return right when there is room. Right-lane cars also respond to slower traffic ahead on the left to discourage passing on the right.</p><p>The orange driver deliberately stays left until you select <strong>Clear the left lane</strong>. It then finishes the pass at a target no lower than its current setting or the faster drivers’ target, waits for a safe gap, and merges right. The limit and driver controls allow targets up to 300 km/h. “Right-lane slow drivers” sets the trucks’ desired speed independently. Recovery takes time as the following cars accelerate.</p><p>This is an illustrative, deterministic car-following model on a repeating straight-view loop (1.2–6 km, growing above 160 vehicles) or a 6 km winding circuit, not a calibrated traffic forecast or a complete implementation of traffic law. Cars are enlarged for visibility. “Faster drivers” can exceed your selected limit to represent that behavior, not recommend it.</p><p>Select <strong>Winding road</strong> for a full-window circuit with more vehicles at the same density. Open <strong>Controls</strong> to adjust its settings. Each mode preserves its own traffic and pauses while you use the other. Bends are schematic: they do not impose cornering speed limits.</p><p><strong>Try it:</strong> run the default scene for 30–60 simulated seconds, release the driver, and compare the speed trace. Higher density and a slower blocker make the effect more noticeable. Other slow vehicles and dense traffic can still limit recovery.</p><p><strong>Arcade options:</strong> enable impatient right-side passing by faster drivers, their horns and headlight flashes, or fictional road-rage and 007 crash sequences. These start only after a driver is held up. Faster drivers flash three times before using the horn. Some ordinary drivers move right after the flashes, others after the horn, always waiting for a safe gap; the orange blocker stays put until released. Sound is opt-in. Releasing the blocker cancels an attack. After a crash, Spawn new blocker adds another driver while keeping the wreck and history; restart clears the scene. Behavior switches apply live, and reset keeps your selections.</p><p class="dialog-note">Settings restart the scene. Playback speed changes simulated time only. Traffic flow is a density-based estimate, not a count at a roadside detector.</p></dialog>
 `;
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
   document.querySelector<T>(selector)!;
-const straightSim = new Simulation();
+let straightSim = new Simulation();
 let sim = straightSim;
 let windingSim: Simulation | null = null;
 let windingMode = false;
@@ -129,7 +129,17 @@ function switchView(): void {
     windingSim = new Simulation(
       {
         ...straightSim.settings,
-        vehicleCount: straightSim.settings.vehicleCount * 5,
+        vehicleCount: Math.min(
+          800,
+          Math.max(
+            60,
+            Math.round(
+              (straightSim.settings.vehicleCount * 6000) /
+                straightSim.roadLength /
+                10,
+            ) * 10,
+          ),
+        ),
       },
       straightSim.arcade,
       6000,
@@ -317,10 +327,13 @@ function updateRange(input: HTMLInputElement): void {
 function syncSettings(): void {
   const settings = sim.settings;
   const scale = sim.roadLength / 1200;
+  $(".road-scale").textContent = windingMode
+    ? "6 KM CIRCUIT · KEEP RIGHT, OVERTAKE LEFT"
+    : `FOLLOWING BLOCKER · ${Number((sim.roadLength / 1000).toFixed(2))} KM LOOP`;
   const density = $<HTMLInputElement>("#vehicle-count");
-  density.min = String(12 * scale);
-  density.max = String(windingMode ? 800 : 44);
-  density.step = String(2 * scale);
+  density.min = String(windingMode ? 60 : 12);
+  density.max = "800";
+  density.step = String(windingMode ? 10 : 2);
   for (const [id, value] of Object.entries({
     "speed-limit": settings.speedLimit,
     "faster-speed": settings.fasterSpeed,
@@ -361,7 +374,14 @@ function applySettings(): void {
     vehicleCount: Number($<HTMLInputElement>("#vehicle-count").value),
     rightLaneSpeed: Number($<HTMLInputElement>("#right-lane-speed").value),
   };
-  sim.configure(settings);
+  if (!windingMode) {
+    straightSim = new Simulation(
+      settings,
+      sim.arcade,
+      Math.max(1200, settings.vehicleCount * 7.5),
+    );
+    sim = straightSim;
+  } else sim.configure(settings);
   syncSettings();
   audio.stop();
   lastAudioEvent = 0;

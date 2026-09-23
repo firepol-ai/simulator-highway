@@ -1,4 +1,4 @@
-import { ROAD_LENGTH, Simulation, type Crash } from "./simulation.ts";
+import { Simulation, type Crash } from "./simulation.ts";
 
 const roundedRect = (
   ctx: CanvasRenderingContext2D,
@@ -47,10 +47,11 @@ export class RoadRenderer {
     const roadTop = center - 69;
     const roadBottom = center + 69;
     // Follow the blocker at a scale where physical bumper gaps stay visible.
-    const visibleLength = Math.min(ROAD_LENGTH, w / 3);
+    const visibleLength = Math.min(sim.roadLength, w / 3);
     const origin =
-      visibleLength < ROAD_LENGTH
-        ? (sim.blocker.x - visibleLength * 0.72 + ROAD_LENGTH) % ROAD_LENGTH
+      visibleLength < sim.roadLength
+        ? (sim.blocker.x - visibleLength * 0.72 + sim.roadLength) %
+          sim.roadLength
         : 0;
     const scale = w / visibleLength;
 
@@ -82,8 +83,8 @@ export class RoadRenderer {
       ctx.stroke();
     }
     for (let i = 0; i < 160; i++) {
-      const worldX = (((i * 173 + 43) % 997) / 997) * ROAD_LENGTH;
-      const x = ((worldX - origin + ROAD_LENGTH) % ROAD_LENGTH) * scale;
+      const worldX = (((i * 173 + 43) % 997) / 997) * sim.roadLength;
+      const x = ((worldX - origin + sim.roadLength) % sim.roadLength) * scale;
       if (x > w + 12) continue;
       const top = i % 2 === 0;
       const y = top
@@ -145,7 +146,8 @@ export class RoadRenderer {
     for (const vehicle of [...sim.vehicles].sort(
       (a, b) => vehicleOrder(a) - vehicleOrder(b),
     )) {
-      const x = ((vehicle.x - origin + ROAD_LENGTH) % ROAD_LENGTH) * scale;
+      const x =
+        ((vehicle.x - origin + sim.roadLength) % sim.roadLength) * scale;
       if (x > w + 20) continue;
       const y = center - 33 + vehicle.visualLane * 66;
       if (vehicle.crashed) {
@@ -256,7 +258,7 @@ export class RoadRenderer {
       ctx.restore();
       if (sim.attack?.kind === "gun" && sim.attack.actorId === vehicle.id) {
         const distance =
-          (sim.blocker.x - vehicle.x + ROAD_LENGTH) % ROAD_LENGTH;
+          (sim.blocker.x - vehicle.x + sim.roadLength) % sim.roadLength;
         const targetX = x + distance * scale;
         ctx.fillStyle = "#25383c";
         ctx.fillRect(x + 7, y - 6, 10, 3);
@@ -321,7 +323,7 @@ export class RoadRenderer {
     ) {
       const x = (distance - origin) * scale;
       if (x >= 20 && x <= w - 20)
-        ctx.fillText(`${distance % ROAD_LENGTH} m`, x, h - 24);
+        ctx.fillText(`${distance % sim.roadLength} m`, x, h - 24);
     }
     ctx.textAlign = "left";
   }
