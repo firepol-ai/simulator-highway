@@ -567,3 +567,77 @@ test("right-lane slow-driver speed and 300 km/h general limit are independent", 
       .every((v) => Math.abs(v.speed * 3.6 - 300) < 0.001),
   );
 });
+
+test("800-vehicle winding traffic opens a gap for a queued spawn and preserves its wreck", () => {
+  const sim = new Simulation(
+    { ...DEFAULT_SETTINGS, vehicleCount: 800 },
+    { ...DEFAULT_ARCADE, spyMode: true },
+    6000,
+  );
+  for (let i = 0; i < 600 && !sim.crash; i++) sim.step(0.1);
+  assert.ok(sim.crash);
+  const victim = sim.blocker;
+  const wrecks = structuredClone(sim.wrecks);
+  const requestedAt = sim.time;
+  assert.equal(sim.spawnBlocker(), false);
+  assert.equal(sim.spawning, true);
+  for (let i = 0; i < 600 && sim.spawning; i++) sim.step(0.1);
+  assert.equal(sim.spawning, false);
+  assert.equal(sim.phase, "blocking");
+  assert.ok(sim.time > requestedAt);
+  assert.equal(sim.vehicles.filter((v) => !v.crashed).length, 800);
+  assert.deepEqual(sim.wrecks, wrecks);
+  assert.ok(sim.vehicles.includes(victim));
+  assert.ok(victim.crashed);
+  for (const car of sim.vehicles.filter((v) => !v.crashed)) {
+    assert.ok(Number.isFinite(car.speed));
+    assert.ok((sim.leader(car)?.gap ?? Infinity) >= 1 - 1e-8);
+  }
+  sim.reset();
+  assert.equal(sim.spawning, false);
+  assert.equal(sim.vehicles.length, 800);
+});
+
+test("indexed traffic matches the full neighbour scan through lane changes and arcade events", () => {
+  class ReferenceSimulation extends Simulation {
+    override leader(
+      vehicle: Simulation["vehicles"][number],
+      lane = vehicle.lane,
+    ) {
+      let result: ReturnType<Simulation["leader"]> = null;
+      for (const other of this.vehicles) {
+        if (other.crashed || other.id === vehicle.id || other.lane !== lane)
+          continue;
+        const gap =
+          ((other.x - vehicle.x + this.roadLength) % this.roadLength) -
+          (vehicle.length + other.length) / 2;
+        if (!result || gap < result.gap) result = { vehicle: other, gap };
+      }
+      return result;
+    }
+  }
+  const settings = { ...DEFAULT_SETTINGS, vehicleCount: 80 };
+  const arcade = {
+    undertaking: true,
+    signals: true,
+    roadRage: false,
+    spyMode: true,
+  };
+  const indexed = new Simulation(settings, arcade, 6000);
+  const reference = new ReferenceSimulation(settings, arcade, 6000);
+  for (let i = 0; i < 600; i++) {
+    indexed.step(0.1);
+    reference.step(0.1);
+    if (i === 300) {
+      indexed.spawnBlocker();
+      reference.spawnBlocker();
+    }
+    if (i === 400) {
+      indexed.release();
+      reference.release();
+    }
+  }
+  assert.deepEqual(indexed.vehicles, reference.vehicles);
+  assert.deepEqual(indexed.events, reference.events);
+  assert.deepEqual(indexed.samples, reference.samples);
+});

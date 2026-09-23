@@ -106,6 +106,16 @@ export class Simulation {
   private nextBehaviorCheck = 1;
   private randomState = 42;
   private eventId = 0;
+  // Valid only inside a substep; invalidate whenever lane membership changes.
+  private indexedTraffic = false;
+  private laneIndex: { lanes: Vehicle[][]; longest: number } | null = null;
+  private spawnYieldId: number | null = null;
+  private nextSpawnAttempt = 0;
+
+  get spawning(): boolean {
+    return this.spawnYieldId !== null;
+  }
+
   private desiredLane: 0 | 1 = 0;
 
   constructor(
@@ -149,6 +159,8 @@ export class Simulation {
     this.attack = null;
     this.crash = null;
     this.wrecks = [];
+    this.spawnYieldId = null;
+    this.nextSpawnAttempt = 0;
     this.vehicles = [];
     const add = (
       x: number,
@@ -297,7 +309,13 @@ export class Simulation {
         break;
       }
     }
-    if (!placed) return false;
+    if (!placed) {
+      // Keep the request alive and open a real gap instead of inserting into traffic.
+      this.spawnYieldId ??= gaps[0].rear.id;
+      this.nextSpawnAttempt = this.time + 0.5;
+      return false;
+    }
+    this.spawnYieldId = null;
     this.vehicles.unshift(next);
     this.desiredLane = 0;
     this.crash = null;
@@ -475,6 +493,38 @@ export class Simulation {
     lane = vehicle.lane,
   ): { vehicle: Vehicle; gap: number } | null {
     let result: { vehicle: Vehicle; gap: number } | null = null;
+    if (this.indexedTraffic) {
+      this.laneIndex ??= {
+        lanes: [0, 1].map((side) =>
+          this.vehicles
+            .filter((v) => !v.crashed && v.lane === side)
+            .sort((a, b) => a.x - b.x),
+        ),
+        longest: Math.max(...this.vehicles.map((v) => v.length)),
+      };
+      const cars = this.laneIndex.lanes[lane];
+      let low = 0,
+        high = cars.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (cars[middle].x < vehicle.x) low = middle + 1;
+        else high = middle;
+      }
+      for (let i = 0; i < cars.length; i++) {
+        const other = cars[(low + i) % cars.length];
+        if (other.id === vehicle.id) continue;
+        const distance = this.distance(vehicle.x, other.x);
+        // Longer trucks can have a nearer rear bumper than the nearest car.
+        if (
+          result &&
+          distance - (vehicle.length + this.laneIndex.longest) / 2 > result.gap
+        )
+          break;
+        const gap = distance - (vehicle.length + other.length) / 2;
+        if (!result || gap < result.gap) result = { vehicle: other, gap };
+      }
+      return result;
+    }
     for (const other of this.vehicles) {
       if (other.crashed || other.id === vehicle.id || other.lane !== lane)
         continue;
@@ -544,6 +594,8 @@ export class Simulation {
   private advance(dt: number): void {
     this.time += dt;
     const checkSignals = this.advanceArcade(dt);
+    this.indexedTraffic = true;
+    this.laneIndex = null;
     for (const vehicle of this.vehicles) {
       if (vehicle.crashed) continue;
       vehicle.cooldown -= dt;
@@ -553,11 +605,12 @@ export class Simulation {
         (vehicle.id === this.attack.actorId || vehicle.kind === "blocker")
       )
         continue;
-      if (vehicle.cooldown > 0) continue;
+      if (vehicle.id === this.spawnYieldId || vehicle.cooldown > 0) continue;
       if (vehicle.kind === "blocker" && this.phase === "blocking") continue;
       if (vehicle.kind === "blocker" && this.phase === "returning") {
         if (this.canMerge(vehicle, 0)) {
           vehicle.lane = 0;
+          this.laneIndex = null;
           vehicle.cooldown = 5;
         }
         continue;
@@ -578,6 +631,7 @@ export class Simulation {
           ahead < this.roadLength / 2;
         if (passed && this.canMerge(vehicle, 0)) {
           vehicle.lane = 0;
+          this.laneIndex = null;
           vehicle.cooldown = 5;
           this.emit("return", vehicle.id, vehicle.passTarget);
           vehicle.passTarget = null;
@@ -595,6 +649,7 @@ export class Simulation {
         this.canMerge(vehicle, 0)
       ) {
         vehicle.lane = 0;
+        this.laneIndex = null;
         vehicle.cooldown = 5;
       } else if (vehicle.lane === 0 && this.canMerge(vehicle, 1)) {
         const right = this.leader(vehicle, 1);
@@ -605,6 +660,7 @@ export class Simulation {
           right.vehicle.speed >= vehicle.desiredSpeed - 1;
         if (wantsRight) {
           vehicle.lane = 1;
+          this.laneIndex = null;
           vehicle.cooldown = 5;
           if (vehicle.kind === "blocker") this.clearedTime = this.time;
         }
@@ -670,6 +726,8 @@ export class Simulation {
             );
           acceleration -= 1.8 * (safeGap / Math.max(0.5, front.gap)) ** 2;
         }
+        if (vehicle.id === this.spawnYieldId)
+          acceleration = Math.min(acceleration, -2.5);
         acceleration = Math.max(-8, Math.min(1.8, acceleration));
         let speed = Math.max(0, vehicle.speed + acceleration * dt);
         const actualFront = this.leader(vehicle);
@@ -677,6 +735,8 @@ export class Simulation {
           speed = Math.min(speed, Math.max(0, (actualFront.gap - 1) / dt));
         return { vehicle, speed, acceleration };
       });
+    this.indexedTraffic = false;
+    this.laneIndex = null;
     for (const { vehicle, speed, acceleration } of updates) {
       vehicle.speed = speed;
       vehicle.braking = acceleration < -0.65;
@@ -696,6 +756,8 @@ export class Simulation {
         this.crashBlocker();
       }
     }
+    if (this.spawning && this.time >= this.nextSpawnAttempt)
+      this.spawnBlocker();
     if (this.time >= this.nextSample) this.recordSample();
   }
 

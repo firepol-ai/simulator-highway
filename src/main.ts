@@ -281,6 +281,16 @@ function updateUI(): void {
               ? "The driver is finishing the pass and looking for a safe gap on the right."
               : "Watch traffic recover, or occupy the left lane again with the same driver.";
   }
+  const spawn = $<HTMLButtonElement>("#spawn-blocker");
+  spawn.disabled = sim.spawning;
+  spawn.textContent = sim.spawning ? "Waiting for gap…" : "Spawn new blocker";
+  if (sim.spawning) {
+    $("#action-title").textContent = paused
+      ? "Resume to open a gap."
+      : "Making room for a new blocker.";
+    $("#action-description").textContent =
+      "A left-lane driver is slowing to open a safe gap. The new blocker will appear automatically.";
+  }
   const latest = sim.events.at(-1);
   const active = Object.values(sim.arcade).some(Boolean);
   const status =
@@ -308,7 +318,7 @@ function syncSettings(): void {
   const scale = sim.roadLength / 1200;
   const density = $<HTMLInputElement>("#vehicle-count");
   density.min = String(12 * scale);
-  density.max = String(44 * scale);
+  density.max = String(windingMode ? 800 : 44);
   density.step = String(2 * scale);
   for (const [id, value] of Object.entries({
     "speed-limit": settings.speedLimit,
@@ -396,10 +406,8 @@ $("#show-speeds").addEventListener("change", (event) => {
   ).checked;
 });
 $("#spawn-blocker").addEventListener("click", () => {
-  if (sim.spawnBlocker()) updateUI();
-  else
-    $("#action-description").textContent =
-      "No room in the left lane yet. Let traffic move, then try spawning again.";
+  sim.spawnBlocker();
+  updateUI();
 });
 document
   .querySelectorAll<HTMLInputElement>(".arcade-options input")
