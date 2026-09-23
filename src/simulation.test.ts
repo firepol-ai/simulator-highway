@@ -586,6 +586,13 @@ test("800-vehicle winding traffic opens a gap for a queued spawn and preserves i
   const victim = sim.blocker;
   const wrecks = structuredClone(sim.wrecks);
   const requestedAt = sim.time;
+  // Explicitly fill the insertion gaps: higher density no longer implies a
+  // road-wide slowdown or guarantees that every possible spawn slot is full.
+  const left = sim.vehicles.filter((v) => !v.crashed && v.lane === 0);
+  left.forEach((v, i) => {
+    v.x = (i * sim.roadLength) / left.length;
+    v.speed = 120 / 3.6;
+  });
   assert.equal(sim.spawnBlocker(), false);
   assert.equal(sim.spawning, true);
   for (let i = 0; i < 600 && sim.spawning; i++) sim.step(0.1);
@@ -1025,16 +1032,33 @@ for (const vehicleCount of [130, 400, 800]) {
       DEFAULT_ARCADE,
       6000,
     );
-    // Isolate same-lane following from overtaking and virtual right-side passing.
-    sim.vehicles.forEach((v, i) => {
-      v.lane = (i % 2) as 0 | 1;
-      v.visualLane = v.lane;
-      v.x = (Math.floor(i / 2) * 6000) / Math.ceil(vehicleCount / 2);
-      v.cooldown = 1000;
-      v.kind = v.id === sim.blocker.id ? "blocker" : "car";
-      v.length = 4.6;
-    });
     advance(sim, 10);
     assert.ok(sim.vehicles.every((v) => v.speed * 3.6 > 119.9));
   });
 }
+
+test("a slow blocker creates a local queue without slowing distant dense traffic", () => {
+  const sim = new Simulation(
+    {
+      speedLimit: 120,
+      fasterSpeed: 120,
+      blockerSpeed: 80,
+      rightLaneSpeed: 120,
+      vehicleCount: 800,
+    },
+    DEFAULT_ARCADE,
+    6000,
+  );
+  advance(sim, 10);
+  const behind = (x: number) =>
+    (sim.blocker.x - x + sim.roadLength) % sim.roadLength;
+  const queued = sim.vehicles.filter(
+    (v) => v.kind === "car" && v.lane === 0 && behind(v.x) < 250,
+  );
+  const distant = sim.vehicles.filter(
+    (v) => v.lane === 0 && behind(v.x) > 1000 && behind(v.x) < 4000,
+  );
+  assert.ok(queued.some((v) => v.speed * 3.6 < 100));
+  assert.ok(distant.length > 100);
+  assert.ok(distant.every((v) => v.speed * 3.6 > 119.9));
+});

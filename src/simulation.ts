@@ -862,7 +862,8 @@ export class Simulation {
           // must not reduce a driver's cruising target before it is caught.
           acceleration = Math.min(
             acceleration,
-            1.8 * (1 - (safeGap / Math.max(0.5, front.gap)) ** 2),
+            1.8 -
+              (1.8 + 2 * closing) * (safeGap / Math.max(0.5, front.gap)) ** 2,
           );
         }
         if (vehicle.id === this.spawnYieldId)

@@ -355,7 +355,7 @@ test("winding controls remain usable on mobile and after rotation", async ({
   await expect(page.getByRole("slider", { name: "Speed limit" })).toBeVisible();
 });
 
-test("800-vehicle winding mode shows pending spawns and completes them after resuming", async ({
+test("800-vehicle winding mode replaces a crashed blocker with an immediate or queued spawn", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -375,13 +375,19 @@ test("800-vehicle winding mode shows pending spawns and completes them after res
   );
   await page.getByRole("button", { name: "Pause simulation" }).click();
   await page.getByRole("button", { name: "Spawn new blocker" }).click();
-  await expect(
-    page.getByRole("button", { name: "Waiting for gap…" }),
-  ).toBeDisabled();
-  await expect(page.locator("#action-title")).toHaveText(
-    "Resume to open a gap.",
-  );
-  await expect(page.locator("#action-title")).toBeVisible();
+  // With freely moving dense traffic an insertion gap may already exist.
+  // Both immediate insertion and a visible queued request are valid.
+  if (await page.locator("#spawn-blocker").isVisible()) {
+    await expect(
+      page.getByRole("button", { name: "Waiting for gap…" }),
+    ).toBeDisabled();
+    await expect(page.locator("#action-title")).toHaveText(
+      "Resume to open a gap.",
+    );
+    await expect(page.locator("#action-title")).toBeVisible();
+  } else {
+    await expect(page.locator("#road-status")).toHaveText("Left lane blocked");
+  }
   await page.getByRole("button", { name: "Resume simulation" }).click();
   await expect(page.locator("#road-status")).toHaveText("Left lane blocked", {
     timeout: 15000,
