@@ -100,7 +100,7 @@ const COLORS = [
 ];
 const kmh = (value: number) => value / 3.6;
 
-/** Illustrative IDM car following on a periodic two-lane road. */
+/** Illustrative car following on a periodic two-lane road. */
 export class Simulation {
   settings: Settings;
   readonly roadLength: number;

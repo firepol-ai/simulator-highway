@@ -208,7 +208,10 @@ test("impatient right-side passes return left after gaining position without ove
     for (const event of sim.events) {
       if (event.id <= lastEvent) continue;
       lastEvent = event.id;
-      if (event.kind === "undertake") started.add(event.actorId);
+      if (event.kind === "undertake") {
+        assert.ok(sim.vehicles.find((v) => v.id === event.actorId)!.fast);
+        started.add(event.actorId);
+      }
       if (event.kind === "return") {
         assert.ok(started.has(event.actorId));
         const actor = sim.vehicles.find(
@@ -839,5 +842,72 @@ for (const roadLength of [1200, 6000]) {
         (v) => v.signalUntil === 0 && v.hornUntil === 0 && v.yieldUntil === 0,
       ),
     );
+  });
+}
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: ordinary drivers overtake slower right-lane traffic on the left and return right`, () => {
+    const sim = new Simulation(
+      { ...DEFAULT_SETTINGS, rightLaneSpeed: 80 },
+      DEFAULT_ARCADE,
+      roadLength,
+    );
+    const ordinary = sim.vehicles[3],
+      truck = sim.vehicles[1];
+    sim.vehicles = [sim.blocker, ordinary, truck];
+    Object.assign(sim.blocker, { x: 1000 });
+    Object.assign(truck, { x: 500 });
+    Object.assign(ordinary, {
+      x: 450,
+      lane: 1,
+      visualLane: 1,
+      speed: 80 / 3.6,
+      cooldown: 0,
+    });
+    let overtookLeft = false,
+      returnedRight = false;
+    for (let i = 0; i < 1200 && !returnedRight; i++) {
+      sim.step(0.05);
+      if (ordinary.lane === 0) overtookLeft = true;
+      const ahead = (ordinary.x - truck.x + roadLength) % roadLength;
+      if (
+        overtookLeft &&
+        ordinary.lane === 1 &&
+        ahead > 15 &&
+        ahead < roadLength / 2
+      )
+        returnedRight = true;
+    }
+    assert.equal(ordinary.fast, false);
+    assert.ok(overtookLeft && returnedRight);
+    assert.ok(ordinary.speed * 3.6 <= sim.settings.speedLimit + 1e-8);
+  });
+
+  test(`${roadLength}m: the blocker ignores staged signals`, () => {
+    const sim = new Simulation(
+      { ...DEFAULT_SETTINGS, blockerSpeed: 90 },
+      { ...DEFAULT_ARCADE, signals: true },
+      roadLength,
+    );
+    const actor = sim.vehicles[2];
+    sim.vehicles = [sim.blocker, actor];
+    Object.assign(sim.blocker, { x: 500 });
+    Object.assign(actor, {
+      x: 450,
+      speed: 90 / 3.6,
+      cooldown: 1000,
+      blockedFor: 10,
+    });
+    advance(sim, 20);
+    assert.ok(
+      sim.events.some(
+        (e) => e.kind === "horn" && e.targetId === sim.blocker.id,
+      ),
+    );
+    assert.equal(sim.blocker.lane, 0);
+    assert.equal(sim.blocker.yieldUntil, 0);
+    sim.setArcade(DEFAULT_ARCADE);
+    assert.equal(actor.signalFlashes, 0);
+    assert.equal(actor.signalTarget, null);
   });
 }

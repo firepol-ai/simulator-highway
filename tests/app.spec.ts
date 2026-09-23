@@ -277,6 +277,12 @@ test("winding mode fills the window and preserves independent scene settings and
   expect(bounds).toEqual({ x: 0, y: 0, width: 1440, height: 1100 });
   await page.getByRole("button", { name: "Pause simulation" }).click();
   await page.locator("#map-controls-toggle").click();
+  await expect(
+    page.getByRole("checkbox", { name: "Impatient right-side passing" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: "Random right-side passing" }),
+  ).toHaveCount(0);
   await expect(page.locator("#vehicle-count")).toHaveAttribute("max", "800");
   await page.getByRole("slider", { name: "Speed limit" }).fill("300");
   await page
