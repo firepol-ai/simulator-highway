@@ -956,7 +956,11 @@ for (const roadLength of [1200, 6000]) {
     assert.ok(sim.events.some((e) => e.kind === "flash"));
     assert.ok(sim.events.some((e) => e.kind === "horn"));
     assert.ok(sim.leader(actor)!.gap < 9);
-    assert.ok(ordinarySpacing.sim.leader(ordinarySpacing.actor)!.gap > 25);
+    assert.ok(
+      ordinarySpacing.sim.leader(ordinarySpacing.actor)!.gap >
+        sim.leader(actor)!.gap + 1,
+    );
+    assert.ok(ordinarySpacing.sim.leader(ordinarySpacing.actor)!.gap < 7);
     // An opening ahead immediately ends the lights/horn, even mid-burst.
     actor.signalUntil = actor.hornUntil = sim.time + 1;
     sim.blocker.x = (actor.x + 100) % roadLength;
@@ -1007,3 +1011,30 @@ test("unobstructed winding traffic at 120 covers twenty percent more road than a
   });
   assert.ok(Math.abs(distances[1] / distances[0] - 1.2) < 1e-8);
 });
+
+for (const vehicleCount of [130, 400, 800]) {
+  test(`${vehicleCount} equal-speed winding vehicles maintain cruising speed instead of a density speed cap`, () => {
+    const sim = new Simulation(
+      {
+        speedLimit: 120,
+        fasterSpeed: 120,
+        blockerSpeed: 120,
+        rightLaneSpeed: 120,
+        vehicleCount,
+      },
+      DEFAULT_ARCADE,
+      6000,
+    );
+    // Isolate same-lane following from overtaking and virtual right-side passing.
+    sim.vehicles.forEach((v, i) => {
+      v.lane = (i % 2) as 0 | 1;
+      v.visualLane = v.lane;
+      v.x = (Math.floor(i / 2) * 6000) / Math.ceil(vehicleCount / 2);
+      v.cooldown = 1000;
+      v.kind = v.id === sim.blocker.id ? "blocker" : "car";
+      v.length = 4.6;
+    });
+    advance(sim, 10);
+    assert.ok(sim.vehicles.every((v) => v.speed * 3.6 > 119.9));
+  });
+}

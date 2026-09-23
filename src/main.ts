@@ -69,7 +69,7 @@ document.querySelector<HTMLDivElement>("#app")!.innerHTML = `
       <div class="main-column">
         <section class="simulation-panel panel" aria-label="Highway simulation">
           <div class="simulation-toolbar"><div class="live-label"><span></span> LIVE SIMULATION <span class="divider">/</span><span class="road-name">Two lanes, one direction</span></div><div class="view-tools"><button id="view-switch" class="view-button" aria-pressed="false">Winding road ⤢</button><div class="timer">${icon("road", 14)}<span id="clock">00:00</span></div></div></div>
-          <div class="road-container"><canvas id="road" aria-label="Top-down animated highway: cars travel to the right, with the overtaking lane above the cruising lane. The blocking driver is orange." role="img"></canvas><div class="road-badge"><span class="badge-dot"></span> <span id="road-status">Left lane blocked</span></div><div class="road-scale">TOP VIEW <span>↗</span> 1.2 KM LOOP</div></div>
+          <div class="road-container"><canvas id="road" aria-label="Top-down animated highway: cars travel to the right, with the overtaking lane above the cruising lane. The blocking driver is orange." role="img"></canvas><div class="road-badge"><span class="badge-dot"></span> <span id="road-status">Left lane blocked</span></div><div class="road-scale">FOLLOWING BLOCKER · 1.2 KM LOOP</div></div>
           <div class="playback-toolbar"><div class="playback-left"><button id="play-pause" class="icon-button" aria-label="Pause simulation">${icon("pause")}</button><button id="reset" class="icon-button" aria-label="Restart simulation">${icon("reset", 16)}</button><span class="toolbar-divider"></span><div class="playback-speeds" role="group" aria-label="Playback speed"><button data-speed="1" class="selected" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="5" aria-pressed="false">5×</button></div></div><div class="playback-right"><span id="map-summary" hidden></span><button id="map-controls-toggle" class="view-button" hidden aria-expanded="false" aria-controls="map-controls">Controls ${icon("sliders", 14)}</button><label class="toggle-label"><input type="checkbox" id="show-speeds" checked /><span class="toggle"></span>Show speeds</label></div></div>
         </section>
         <section class="intervention" aria-label="Clear the blocking driver"><div class="intervention-icon">${icon("road", 24)}</div><div class="intervention-copy"><h2 id="action-title">Give traffic a little room.</h2><p id="action-description">Let the orange car finish overtaking and move back to the right.</p></div><div class="intervention-actions"><button id="spawn-blocker" class="primary-button" hidden>Spawn new blocker</button><button id="release" class="primary-button">Clear the left lane ${icon("arrow")}</button></div></section>
@@ -165,7 +165,7 @@ function switchView(): void {
     : "Two lanes, one direction";
   $(".road-scale").innerHTML = windingMode
     ? "6 KM CIRCUIT · KEEP RIGHT, OVERTAKE LEFT"
-    : "TOP VIEW <span>↗</span> 1.2 KM LOOP";
+    : "FOLLOWING BLOCKER · 1.2 KM LOOP";
   $("#road").setAttribute(
     "aria-label",
     windingMode

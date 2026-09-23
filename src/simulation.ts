@@ -796,8 +796,9 @@ export class Simulation {
           if (
             left &&
             vehicle.passTarget === null &&
+            left.gap > 0 &&
             left.gap < 100 &&
-            left.vehicle.speed < vehicle.speed + 1 &&
+            left.vehicle.speed < vehicle.speed - 0.01 &&
             (!front || left.gap < front.gap)
           )
             front = left;
@@ -845,13 +846,16 @@ export class Simulation {
               vehicle.passTarget !== null);
           const followingDistance = yielding
             ? 3 + vehicle.speed * 2.2
-            : impatient
-              ? 2 + Math.min(6, vehicle.speed * 0.12)
-              : 3 + vehicle.speed * 1.15;
+            : vehicle.kind === "blocker" && this.phase === "overtaking"
+              ? 3 + vehicle.speed * 1.4
+              : impatient
+                ? 2 + Math.min(2, vehicle.speed * 0.025)
+                : 4 + Math.min(2, vehicle.speed * 0.03);
           const safeGap = Math.max(
             impatient && !yielding ? 2 : 3,
             followingDistance +
-              (vehicle.speed * closing) / (2 * Math.sqrt(1.8 * 2.5)),
+              Math.max(0, closing) * 0.25 +
+              Math.max(0, closing) ** 2 / (2 * 4),
           );
 
           // Independent free-speed and following constraints: distant traffic
@@ -865,11 +869,36 @@ export class Simulation {
           acceleration = Math.min(acceleration, -2.5);
         acceleration = Math.max(-8, Math.min(1.8, acceleration));
         let speed = Math.max(0, vehicle.speed + acceleration * dt);
-        const actualFront = this.leader(vehicle);
-        if (actualFront && !ramming)
-          speed = Math.min(speed, Math.max(0, (actualFront.gap - 1) / dt));
-        return { vehicle, speed, acceleration };
+        const actualFront = ramming ? null : this.leader(vehicle);
+        return { vehicle, speed, acceleration, actualFront };
       });
+    // Collision limits must include the leader's movement during this same
+    // substep. Treating its current position as stationary jams dense traffic.
+    const planned = new Map(
+      updates.map((update) => [update.vehicle.id, update]),
+    );
+    const followers = new Map<number, typeof updates>();
+    for (const update of updates) {
+      if (!update.actualFront) continue;
+      const id = update.actualFront.vehicle.id;
+      const behind = followers.get(id) ?? [];
+      behind.push(update);
+      followers.set(id, behind);
+    }
+    const pending = [...updates];
+    for (let i = 0; i < pending.length; i++) {
+      const update = pending[i];
+      if (!update.actualFront) continue;
+      const leader = planned.get(update.actualFront.vehicle.id)!;
+      const allowed = Math.max(
+        0,
+        leader.speed + (update.actualFront.gap - 1.0000001) / dt,
+      );
+      if (update.speed > allowed + 1e-10) {
+        update.speed = allowed;
+        pending.push(...(followers.get(update.vehicle.id) ?? []));
+      }
+    }
     this.indexedTraffic = false;
     this.laneIndex = null;
     for (const { vehicle, speed, acceleration } of updates) {

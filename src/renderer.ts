@@ -46,6 +46,14 @@ export class RoadRenderer {
     const center = h * 0.53;
     const roadTop = center - 69;
     const roadBottom = center + 69;
+    // Follow the blocker at a scale where physical bumper gaps stay visible.
+    const visibleLength = Math.min(ROAD_LENGTH, w / 3);
+    const origin =
+      visibleLength < ROAD_LENGTH
+        ? (sim.blocker.x - visibleLength * 0.72 + ROAD_LENGTH) % ROAD_LENGTH
+        : 0;
+    const scale = w / visibleLength;
+
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "#e3e8d9";
     ctx.fillRect(0, 0, w, h);
@@ -73,8 +81,10 @@ export class RoadRenderer {
       ctx.lineTo(w * 0.74 + i * 28, roadTop - 35);
       ctx.stroke();
     }
-    for (let i = 0; i < Math.floor(w / 29); i++) {
-      const x = (((i * 173 + 43) % 997) / 997) * w;
+    for (let i = 0; i < 160; i++) {
+      const worldX = (((i * 173 + 43) % 997) / 997) * ROAD_LENGTH;
+      const x = ((worldX - origin + ROAD_LENGTH) % ROAD_LENGTH) * scale;
+      if (x > w + 12) continue;
       const top = i % 2 === 0;
       const y = top
         ? 37 + ((i * 29) % Math.max(1, roadTop - 87))
@@ -105,18 +115,20 @@ export class RoadRenderer {
     ctx.fillRect(0, roadBottom - 8, w, 2);
     ctx.strokeStyle = "#c4cebf";
     ctx.lineWidth = 2;
-    ctx.setLineDash([24, 25]);
+    ctx.setLineDash([30, 30]);
+    ctx.lineDashOffset = (origin * scale) % 60;
     ctx.beginPath();
     ctx.moveTo(0, center);
     ctx.lineTo(w, center);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
     for (const y of [roadTop - 14, roadBottom + 14]) {
       ctx.fillStyle = "#a3afa0";
       ctx.fillRect(0, y, w, 3);
       ctx.fillStyle = "#e8ecdd";
       ctx.fillRect(0, y, w, 1);
-      for (let x = 20; x < w; x += 64) {
+      for (let x = -((origin * scale) % 60); x < w; x += 60) {
         ctx.fillStyle = "#89968b";
         ctx.fillRect(x, y - 2, 3, 7);
       }
@@ -129,13 +141,6 @@ export class RoadRenderer {
     ctx.fillText("RIGHT · CRUISING  →", 22, center + 51);
     ctx.letterSpacing = "0px";
 
-    // Follow the blocker at a scale where physical bumper gaps stay visible.
-    const visibleLength = Math.min(ROAD_LENGTH, w / 3);
-    const origin =
-      visibleLength < ROAD_LENGTH
-        ? (sim.blocker.x - visibleLength * 0.72 + ROAD_LENGTH) % ROAD_LENGTH
-        : 0;
-    const scale = w / visibleLength;
     const speedLabels: number[] = [];
     for (const vehicle of [...sim.vehicles].sort(
       (a, b) => vehicleOrder(a) - vehicleOrder(b),
@@ -306,17 +311,17 @@ export class RoadRenderer {
       }
       ctx.textAlign = "left";
     }
-    // Schematic distance markers, intentionally not a physical vehicle scale.
     ctx.fillStyle = "#718068";
     ctx.font = "10px Arial";
-    for (let i = 0; i <= 4; i++) {
-      const x = 22 + ((w - 44) * i) / 4;
-      ctx.textAlign = i === 4 ? "right" : "left";
-      const distance =
-        origin === 0 && visibleLength === ROAD_LENGTH
-          ? (i * ROAD_LENGTH) / 4
-          : (origin + (i * visibleLength) / 4) % ROAD_LENGTH;
-      ctx.fillText(`${(distance / 1000).toFixed(1)} km`, x, h - 24);
+    ctx.textAlign = "center";
+    for (
+      let distance = Math.ceil(origin / 50) * 50;
+      distance < origin + visibleLength;
+      distance += 50
+    ) {
+      const x = (distance - origin) * scale;
+      if (x >= 20 && x <= w - 20)
+        ctx.fillText(`${distance % ROAD_LENGTH} m`, x, h - 24);
     }
     ctx.textAlign = "left";
   }
@@ -457,6 +462,7 @@ export function drawChart(canvas: HTMLCanvasElement, sim: Simulation): void {
   ctx.lineTo(right, yFor(sim.settings.speedLimit));
   ctx.stroke();
   ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
   const samples = sim.samples.filter((sample) => sample.time >= start);
   if (samples.length > 1) {
     ctx.beginPath();
@@ -490,6 +496,7 @@ export function drawChart(canvas: HTMLCanvasElement, sim: Simulation): void {
     ctx.lineTo(x, bottom);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
     ctx.fillStyle = "#986d32";
     ctx.textAlign = x > width - 90 ? "right" : "left";
     ctx.fillText("Release", x + (x > width - 90 ? -5 : 5), top + 9);
@@ -503,6 +510,7 @@ export function drawChart(canvas: HTMLCanvasElement, sim: Simulation): void {
     ctx.lineTo(x, bottom);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
     ctx.fillStyle = "#9d5c3e";
     ctx.textAlign = x > width - 90 ? "right" : "left";
     ctx.fillText("Crash", x + (x > width - 90 ? -5 : 5), top + 9);
