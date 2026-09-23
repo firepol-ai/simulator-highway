@@ -520,7 +520,7 @@ export class Simulation {
         vehicle.visualLane <= 0.1 &&
         vehicle.blockedFor > 3 &&
         front &&
-        front.gap < 100 &&
+        front.gap <= 10 &&
         vehicle.desiredSpeed - vehicle.speed > kmh(5);
       if (!eligible) {
         vehicle.signalTarget = null;
@@ -748,7 +748,17 @@ export class Simulation {
     }
 
     for (const vehicle of this.vehicles) {
-      if (vehicle.lane !== 0 || vehicle.crashed) {
+      const signalling =
+        vehicle.signalUntil > this.time || vehicle.hornUntil > this.time;
+      const signalLeader = signalling ? this.leader(vehicle) : null;
+      if (
+        vehicle.lane !== 0 ||
+        vehicle.crashed ||
+        (signalling &&
+          (!signalLeader ||
+            signalLeader.gap > 10 ||
+            signalLeader.vehicle.id !== vehicle.signalTarget))
+      ) {
         vehicle.signalUntil = vehicle.hornUntil = 0;
         vehicle.signalTarget = null;
         vehicle.signalFlashes = 0;
@@ -812,14 +822,23 @@ export class Simulation {
           const closing = vehicle.speed - front.vehicle.speed;
           const yielding =
             vehicle.lane === yieldingLane && front.vehicle.kind === "blocker";
-          const safeGap =
-            3 +
-            Math.max(
-              0,
-              vehicle.speed *
-                (yielding ? 2.2 : vehicle.passTarget !== null ? 0.55 : 1.15) +
-                (vehicle.speed * closing) / (2 * Math.sqrt(1.8 * 2.5)),
-            );
+          const impatient =
+            vehicle.kind === "car" &&
+            vehicle.fast &&
+            (this.arcade.undertaking ||
+              this.arcade.signals ||
+              vehicle.passTarget !== null);
+          const followingDistance = yielding
+            ? 3 + vehicle.speed * 2.2
+            : impatient
+              ? 2 + Math.min(6, vehicle.speed * 0.12)
+              : 3 + vehicle.speed * 1.15;
+          const safeGap = Math.max(
+            impatient && !yielding ? 2 : 3,
+            followingDistance +
+              (vehicle.speed * closing) / (2 * Math.sqrt(1.8 * 2.5)),
+          );
+
           // Independent free-speed and following constraints: distant traffic
           // must not reduce a driver's cruising target before it is caught.
           acceleration = Math.min(

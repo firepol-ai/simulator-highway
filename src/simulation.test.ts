@@ -758,7 +758,7 @@ for (const roadLength of [1200, 6000]) {
     sim.vehicles = [sim.blocker, actor, ordinary, truck];
     Object.assign(sim.blocker, { x: 900 });
     Object.assign(actor, {
-      x: 140,
+      x: 188,
       speed: 120 / 3.6,
       blockedFor: 10,
       cooldown: 1000,
@@ -795,7 +795,7 @@ for (const roadLength of [1200, 6000]) {
     sim.blocker.x = 1100;
     for (const [i, { actor, target }] of pairs.entries()) {
       Object.assign(actor, {
-        x: 140 + i * 300,
+        x: 188 + i * 300,
         speed: 120 / 3.6,
         blockedFor: 10,
         cooldown: 1000,
@@ -893,7 +893,7 @@ for (const roadLength of [1200, 6000]) {
     sim.vehicles = [sim.blocker, actor];
     Object.assign(sim.blocker, { x: 500 });
     Object.assign(actor, {
-      x: 450,
+      x: 488,
       speed: 90 / 3.6,
       cooldown: 1000,
       blockedFor: 10,
@@ -909,5 +909,59 @@ for (const roadLength of [1200, 6000]) {
     sim.setArcade(DEFAULT_ARCADE);
     assert.equal(actor.signalFlashes, 0);
     assert.equal(actor.signalTarget, null);
+  });
+}
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: impatient followers close the gap and signal only when nearly bumper to bumper`, () => {
+    const make = (impatient: boolean) => {
+      const sim = new Simulation(
+        { ...DEFAULT_SETTINGS, blockerSpeed: 110 },
+        { ...DEFAULT_ARCADE, signals: impatient },
+        roadLength,
+      );
+      const actor = sim.vehicles[2];
+      sim.vehicles = [sim.blocker, actor];
+      Object.assign(sim.blocker, { x: 500 });
+      Object.assign(actor, {
+        x: 440,
+        speed: 110 / 3.6,
+        cooldown: 1000,
+        blockedFor: 10,
+      });
+      return { sim, actor };
+    };
+    const { sim, actor } = make(true);
+    const ordinarySpacing = make(false);
+    sim.step(0.05);
+    assert.equal(
+      sim.events.length,
+      0,
+      "no signalling from a distant queue position",
+    );
+    let lastEvent = 0;
+    for (let i = 0; i < 1200; i++) {
+      sim.step(0.05);
+      ordinarySpacing.sim.step(0.05);
+      for (const event of sim.events) {
+        if (event.id <= lastEvent) continue;
+        lastEvent = event.id;
+        if (event.kind === "flash" || event.kind === "horn") {
+          assert.ok(sim.leader(actor)!.gap <= 10.01);
+          assert.equal(event.actorId, actor.id);
+        }
+      }
+      assert.ok(sim.leader(actor)!.gap >= 1 - 1e-8);
+    }
+    assert.ok(sim.events.some((e) => e.kind === "flash"));
+    assert.ok(sim.events.some((e) => e.kind === "horn"));
+    assert.ok(sim.leader(actor)!.gap < 9);
+    assert.ok(ordinarySpacing.sim.leader(ordinarySpacing.actor)!.gap > 25);
+    // An opening ahead immediately ends the lights/horn, even mid-burst.
+    actor.signalUntil = actor.hornUntil = sim.time + 1;
+    sim.blocker.x = (actor.x + 100) % roadLength;
+    sim.step(0.05);
+    assert.equal(actor.signalUntil, 0);
+    assert.equal(actor.hornUntil, 0);
   });
 }
