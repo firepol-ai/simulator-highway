@@ -218,6 +218,8 @@ export class RoadRenderer {
         ctx.lineTo(x + 42, y + 17);
         ctx.lineTo(x + length / 2, y + 5);
         ctx.fill();
+      }
+      if (vehicle.lane === 0 && vehicle.hornUntil > sim.time) {
         ctx.strokeStyle = "#f9d68c";
         ctx.lineWidth = 1.5;
         for (const radius of [17, 23]) {

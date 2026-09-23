@@ -151,6 +151,15 @@ export class WindingRenderer {
         ctx.lineTo(length / 2, 3);
         ctx.fill();
       }
+      if (!wreck && vehicle.lane === 0 && vehicle.hornUntil > sim.time) {
+        ctx.strokeStyle = "#ffe39c";
+        ctx.lineWidth = 1.5;
+        for (const radius of [14, 19]) {
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, -0.65, 0.65);
+          ctx.stroke();
+        }
+      }
       ctx.restore();
       if (wreck && age < 14) {
         for (let i = 0; i < 3; i++) {

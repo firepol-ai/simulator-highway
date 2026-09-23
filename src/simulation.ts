@@ -22,6 +22,9 @@ export interface Vehicle {
   blockedFor: number;
   signalUntil: number;
   yieldUntil: number;
+  hornUntil: number;
+  signalTarget: number | null;
+  signalFlashes: number;
   nextSignal: number;
   passTarget: number | null;
   crashed: boolean;
@@ -44,7 +47,15 @@ export const DEFAULT_ARCADE: ArcadeOptions = {
 export interface TrafficEvent {
   id: number;
   time: number;
-  kind: "horn" | "undertake" | "return" | "ram" | "shot" | "crash" | "spawn";
+  kind:
+    | "flash"
+    | "horn"
+    | "undertake"
+    | "return"
+    | "ram"
+    | "shot"
+    | "crash"
+    | "spawn";
   actorId: number;
   targetId: number;
 }
@@ -194,6 +205,9 @@ export class Simulation {
         blockedFor: 0,
         signalUntil: 0,
         yieldUntil: 0,
+        hornUntil: 0,
+        signalTarget: null,
+        signalFlashes: 0,
         nextSignal: 0,
         passTarget: null,
         crashed: false,
@@ -266,6 +280,9 @@ export class Simulation {
       blockedFor: 0,
       signalUntil: 0,
       yieldUntil: 0,
+      hornUntil: 0,
+      signalTarget: null,
+      signalFlashes: 0,
       nextSignal: 0,
       passTarget: null,
       cooldown: 3,
@@ -337,7 +354,12 @@ export class Simulation {
     )
       this.attack = null;
     if (!options.signals)
-      for (const vehicle of this.vehicles) vehicle.signalUntil = 0;
+      for (const vehicle of this.vehicles) {
+        vehicle.signalUntil = vehicle.hornUntil = vehicle.yieldUntil = 0;
+        vehicle.signalTarget = null;
+        vehicle.signalFlashes = 0;
+        vehicle.nextSignal = 0;
+      }
   }
 
   private random(): number {
@@ -396,9 +418,22 @@ export class Simulation {
       const front = this.leader(vehicle);
       // A faster car already on the right may pass a slower left-lane leader
       // instead of braking behind that car's virtual no-passing constraint.
-      if (check && this.arcade.undertaking && vehicle.fast && vehicle.lane === 1 && vehicle.passTarget === null && vehicle.cooldown <= 0) {
+      if (
+        check &&
+        this.arcade.undertaking &&
+        vehicle.fast &&
+        vehicle.lane === 1 &&
+        vehicle.passTarget === null &&
+        vehicle.cooldown <= 0
+      ) {
         const left = this.leader(vehicle, 0);
-        if (left && left.gap > 0 && left.gap < 120 && left.vehicle.speed < vehicle.desiredSpeed - kmh(5) && (!front || front.gap > left.gap + 15)) {
+        if (
+          left &&
+          left.gap > 0 &&
+          left.gap < 120 &&
+          left.vehicle.speed < vehicle.desiredSpeed - kmh(5) &&
+          (!front || front.gap > left.gap + 15)
+        ) {
           vehicle.passTarget = left.vehicle.id;
           vehicle.cooldown = 2;
           this.emit("undertake", vehicle.id, left.vehicle.id);
@@ -476,28 +511,41 @@ export class Simulation {
   private signalLeftLaneDrivers(): void {
     if (!this.arcade.signals) return;
     for (const vehicle of this.vehicles) {
-      if (
-        vehicle.kind !== "car" ||
-        !vehicle.fast ||
-        vehicle.crashed ||
-        vehicle.lane !== 0 ||
-        vehicle.visualLane > 0.1 ||
-        vehicle.blockedFor <= 3 ||
-        this.time < vehicle.nextSignal
-      )
-        continue;
       const front = this.leader(vehicle);
-      if (
-        !front ||
-        front.gap >= 100 ||
-        vehicle.desiredSpeed - vehicle.speed <= kmh(5) ||
-        this.random() >= 0.45
-      )
+      const eligible =
+        vehicle.kind === "car" &&
+        vehicle.fast &&
+        !vehicle.crashed &&
+        vehicle.lane === 0 &&
+        vehicle.visualLane <= 0.1 &&
+        vehicle.blockedFor > 3 &&
+        front &&
+        front.gap < 100 &&
+        vehicle.desiredSpeed - vehicle.speed > kmh(5);
+      if (!eligible) {
+        vehicle.signalTarget = null;
+        vehicle.signalFlashes = 0;
         continue;
-      vehicle.signalUntil = this.time + 1.4;
-      vehicle.nextSignal = this.time + 5 + this.random() * 5;
-      this.emit("horn", vehicle.id, front.vehicle.id);
-      if (front.vehicle.kind === "car" && !front.vehicle.fast && this.random() < 0.65)
+      }
+      if (vehicle.signalTarget !== front.vehicle.id) {
+        vehicle.signalTarget = front.vehicle.id;
+        vehicle.signalFlashes = 0;
+        vehicle.nextSignal = this.time;
+      }
+      if (this.time < vehicle.nextSignal) continue;
+      const horn = vehicle.signalFlashes >= 3;
+      vehicle.signalUntil = this.time + 1.2;
+      vehicle.hornUntil = horn ? this.time + 1.2 : 0;
+      vehicle.nextSignal = this.time + (horn ? 5 + this.random() * 3 : 2);
+      if (!horn) vehicle.signalFlashes++;
+      this.emit(horn ? "horn" : "flash", vehicle.id, front.vehicle.id);
+      // Decide once at the first flash; less responsive drivers wait for a horn.
+      if (
+        front.vehicle.kind === "car" &&
+        !front.vehicle.fast &&
+        (horn || vehicle.signalFlashes === 1) &&
+        this.random() < (horn ? 0.8 : 0.5)
+      )
         front.vehicle.yieldUntil = this.time + 8;
     }
   }
@@ -553,7 +601,11 @@ export class Simulation {
     return result;
   }
 
-  private canMerge(vehicle: Vehicle, lane: 0 | 1, impatient = vehicle.passTarget !== null): boolean {
+  private canMerge(
+    vehicle: Vehicle,
+    lane: 0 | 1,
+    impatient = vehicle.passTarget !== null,
+  ): boolean {
     const headway = impatient ? 0.3 : 1.2;
     const minimumGap = impatient ? 8 : 15;
     const front = this.leader(vehicle, lane);
@@ -623,8 +675,16 @@ export class Simulation {
         (vehicle.id === this.attack.actorId || vehicle.kind === "blocker")
       )
         continue;
-      const yieldingToFaster = this.arcade.signals && vehicle.kind === "car" && !vehicle.fast && vehicle.yieldUntil > this.time;
-      if (vehicle.id === this.spawnYieldId || (vehicle.cooldown > 0 && !yieldingToFaster)) continue;
+      const yieldingToFaster =
+        this.arcade.signals &&
+        vehicle.kind === "car" &&
+        !vehicle.fast &&
+        vehicle.yieldUntil > this.time;
+      if (
+        vehicle.id === this.spawnYieldId ||
+        (vehicle.cooldown > 0 && !yieldingToFaster)
+      )
+        continue;
       if (vehicle.kind === "blocker" && this.phase === "blocking") continue;
       if (vehicle.kind === "blocker" && this.phase === "returning") {
         if (this.canMerge(vehicle, 0)) {
@@ -688,7 +748,11 @@ export class Simulation {
     }
 
     for (const vehicle of this.vehicles) {
-      if (vehicle.lane !== 0 || vehicle.crashed) vehicle.signalUntil = 0;
+      if (vehicle.lane !== 0 || vehicle.crashed) {
+        vehicle.signalUntil = vehicle.hornUntil = 0;
+        vehicle.signalTarget = null;
+        vehicle.signalFlashes = 0;
+      }
     }
     if (checkSignals) this.signalLeftLaneDrivers();
 
@@ -717,7 +781,13 @@ export class Simulation {
         // than repeatedly accelerating past every gap while trying to clear.
         if (vehicle.kind === "blocker" && this.phase === "overtaking") {
           const right = this.leader(vehicle, 1);
-          if (right && right.gap > 0 && right.gap < vehicle.speed * 4 && (!front || right.gap < front.gap)) front = right;
+          if (
+            right &&
+            right.gap > 0 &&
+            right.gap < vehicle.speed * 4 &&
+            (!front || right.gap < front.gap)
+          )
+            front = right;
         }
         // A requested lane change prompts the following driver in that lane to yield.
         const yieldingLane =
@@ -752,7 +822,10 @@ export class Simulation {
             );
           // Independent free-speed and following constraints: distant traffic
           // must not reduce a driver's cruising target before it is caught.
-          acceleration = Math.min(acceleration, 1.8 * (1 - (safeGap / Math.max(0.5, front.gap)) ** 2));
+          acceleration = Math.min(
+            acceleration,
+            1.8 * (1 - (safeGap / Math.max(0.5, front.gap)) ** 2),
+          );
         }
         if (vehicle.id === this.spawnYieldId)
           acceleration = Math.min(acceleration, -2.5);

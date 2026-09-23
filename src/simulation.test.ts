@@ -193,7 +193,7 @@ test("impatient drivers signal only when enabled and blocked", () => {
   assert.equal(free.events.length, 0);
 });
 
-test("random right-side passes return left after gaining position without overlap", () => {
+test("impatient right-side passes return left after gaining position without overlap", () => {
   const sim = new Simulation(undefined, {
     ...DEFAULT_ARCADE,
     undertaking: true,
@@ -238,8 +238,8 @@ test("horns and lights only address traffic in the left lane", () => {
   });
   let lastEvent = 0;
   let horns = 0;
-  for (let i = 0; i < 1800; i++) {
-    sim.step(0.1);
+  for (let i = 0; i < 3600; i++) {
+    sim.step(0.05);
     for (const vehicle of sim.vehicles) {
       if (vehicle.lane === 1) assert.equal(vehicle.signalUntil, 0);
     }
@@ -248,6 +248,7 @@ test("horns and lights only address traffic in the left lane", () => {
       lastEvent = event.id;
       if (event.kind !== "horn") continue;
       horns++;
+      assert.ok(sim.vehicles.find((v) => v.id === event.actorId)!.fast);
       assert.equal(
         sim.vehicles.find((vehicle) => vehicle.id === event.actorId)!.lane,
         0,
@@ -648,10 +649,13 @@ test("indexed traffic matches the full neighbour scan through lane changes and a
 for (const roadLength of [1200, 6000]) {
   test(`${roadLength}m: drivers hold their targets until catching the blocker queue`, () => {
     const sim = new Simulation(DEFAULT_SETTINGS, DEFAULT_ARCADE, roadLength);
-    const fast = sim.vehicles[2], regular = sim.vehicles[3];
+    const fast = sim.vehicles[2],
+      regular = sim.vehicles[3];
     assert.equal(fast.fast, true);
     assert.equal(regular.fast, false);
-    assert.ok(Math.abs(regular.desiredSpeed * 3.6 - sim.settings.speedLimit) < 1e-8);
+    assert.ok(
+      Math.abs(regular.desiredSpeed * 3.6 - sim.settings.speedLimit) < 1e-8,
+    );
     sim.vehicles = [sim.blocker, fast, regular];
     Object.assign(sim.blocker, { x: 600, cooldown: 1000 });
     Object.assign(fast, { x: 100, cooldown: 1000 });
@@ -668,50 +672,172 @@ for (const roadLength of [1200, 6000]) {
 
   for (const initialLane of [0, 1] as const) {
     test(`${roadLength}m: faster drivers accelerate on the right and complete a real pass from lane ${initialLane}`, () => {
-      const sim = new Simulation({ ...DEFAULT_SETTINGS, fasterSpeed: 180, blockerSpeed: 75 }, { ...DEFAULT_ARCADE, undertaking: true }, roadLength);
+      const sim = new Simulation(
+        { ...DEFAULT_SETTINGS, fasterSpeed: 180, blockerSpeed: 75 },
+        { ...DEFAULT_ARCADE, undertaking: true },
+        roadLength,
+      );
       const actor = sim.vehicles[2];
       sim.vehicles = [sim.blocker, actor];
       Object.assign(sim.blocker, { x: 500 });
-      Object.assign(actor, { x: 450, speed: 75 / 3.6, lane: initialLane, visualLane: initialLane, blockedFor: 5, cooldown: 0 });
+      Object.assign(actor, {
+        x: 450,
+        speed: 75 / 3.6,
+        lane: initialLane,
+        visualLane: initialLane,
+        blockedFor: 5,
+        cooldown: 0,
+      });
       let rightSpeed = 0;
-      for (let i = 0; i < 1200 && !sim.events.some(e => e.kind === "return"); i++) {
+      for (
+        let i = 0;
+        i < 1200 && !sim.events.some((e) => e.kind === "return");
+        i++
+      ) {
         sim.step(0.05);
-        if (actor.lane === 1) rightSpeed = Math.max(rightSpeed, actor.speed * 3.6);
+        if (actor.lane === 1)
+          rightSpeed = Math.max(rightSpeed, actor.speed * 3.6);
         assert.ok((sim.leader(actor)?.gap ?? Infinity) >= 1 - 1e-8);
       }
-      assert.ok(sim.events.some(e => e.kind === "undertake" && e.actorId === actor.id));
-      assert.ok(sim.events.some(e => e.kind === "return" && e.actorId === actor.id));
+      assert.ok(
+        sim.events.some(
+          (e) => e.kind === "undertake" && e.actorId === actor.id,
+        ),
+      );
+      assert.ok(
+        sim.events.some((e) => e.kind === "return" && e.actorId === actor.id),
+      );
       assert.ok(rightSpeed > 90, `right-lane speed ${rightSpeed}`);
       assert.equal(actor.lane, 0);
       const ahead = (actor.x - sim.blocker.x + roadLength) % roadLength;
-      assert.ok(ahead > (actor.length + sim.blocker.length) / 2 + 8 && ahead < roadLength / 2);
+      assert.ok(
+        ahead > (actor.length + sim.blocker.length) / 2 + 8 &&
+          ahead < roadLength / 2,
+      );
     });
   }
 
   test(`${roadLength}m: ordinary drivers neither undertake nor signal`, () => {
-    const sim = new Simulation({ ...DEFAULT_SETTINGS, blockerSpeed: 75 }, { ...DEFAULT_ARCADE, undertaking: true, signals: true }, roadLength);
+    const sim = new Simulation(
+      { ...DEFAULT_SETTINGS, blockerSpeed: 75 },
+      { ...DEFAULT_ARCADE, undertaking: true, signals: true },
+      roadLength,
+    );
     const ordinary = sim.vehicles[3];
     sim.vehicles = [sim.blocker, ordinary];
     Object.assign(sim.blocker, { x: 500 });
-    Object.assign(ordinary, { x: 450, speed: 75 / 3.6, blockedFor: 10, cooldown: 1000 });
+    Object.assign(ordinary, {
+      x: 450,
+      speed: 75 / 3.6,
+      blockedFor: 10,
+      cooldown: 1000,
+    });
     advance(sim, 30);
-    assert.equal(sim.events.filter(e => e.kind === "horn" || e.kind === "undertake").length, 0);
+    assert.equal(
+      sim.events.filter(
+        (e) =>
+          e.kind === "horn" || e.kind === "flash" || e.kind === "undertake",
+      ).length,
+      0,
+    );
     assert.equal(ordinary.signalUntil, 0);
   });
 
   test(`${roadLength}m: a signalled ordinary driver yields safely but the blocker does not`, () => {
-    const sim = new Simulation(DEFAULT_SETTINGS, { ...DEFAULT_ARCADE, signals: true }, roadLength);
-    const actor = sim.vehicles[2], ordinary = sim.vehicles[3], truck = sim.vehicles[1];
+    const sim = new Simulation(
+      DEFAULT_SETTINGS,
+      { ...DEFAULT_ARCADE, signals: true },
+      roadLength,
+    );
+    const actor = sim.vehicles[2],
+      ordinary = sim.vehicles[3],
+      truck = sim.vehicles[1];
     sim.vehicles = [sim.blocker, actor, ordinary, truck];
     Object.assign(sim.blocker, { x: 900 });
-    Object.assign(actor, { x: 140, speed: 120 / 3.6, blockedFor: 10, cooldown: 1000 });
+    Object.assign(actor, {
+      x: 140,
+      speed: 120 / 3.6,
+      blockedFor: 10,
+      cooldown: 1000,
+    });
     Object.assign(ordinary, { x: 200, cooldown: 1000 });
     Object.assign(truck, { x: 300 });
     for (let i = 0; i < 400 && ordinary.lane === 0; i++) sim.step(0.05);
-    assert.ok(sim.events.some(e => e.kind === "horn" && e.actorId === actor.id && e.targetId === ordinary.id));
+    assert.ok(
+      sim.events.some(
+        (e) =>
+          (e.kind === "horn" || e.kind === "flash") &&
+          e.actorId === actor.id &&
+          e.targetId === ordinary.id,
+      ),
+    );
     assert.equal(ordinary.lane, 1);
     assert.ok((sim.leader(ordinary)?.gap ?? Infinity) >= 15);
     assert.equal(sim.blocker.lane, 0);
     assert.equal(sim.blocker.yieldUntil, 0);
+  });
+}
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: flashes precede horns and drivers respond at different stages`, () => {
+    const sim = new Simulation(
+      DEFAULT_SETTINGS,
+      { ...DEFAULT_ARCADE, signals: true },
+      roadLength,
+    );
+    const pairs = [0, 1, 2].map((i) => ({
+      actor: sim.vehicles[2 + i * 3],
+      target: sim.vehicles[3 + i * 3],
+    }));
+    sim.blocker.x = 1100;
+    for (const [i, { actor, target }] of pairs.entries()) {
+      Object.assign(actor, {
+        x: 140 + i * 300,
+        speed: 120 / 3.6,
+        blockedFor: 10,
+        cooldown: 1000,
+      });
+      Object.assign(target, { x: 200 + i * 300, cooldown: 1000 });
+    }
+    sim.vehicles = [sim.blocker, ...pairs.flatMap((p) => [p.actor, p.target])];
+    const yielded = new Map<number, "flash" | "horn">();
+    for (let i = 0; i < 400 && yielded.size < pairs.length; i++) {
+      sim.step(0.05);
+      for (const { actor, target } of pairs) {
+        if (target.lane === 1 && !yielded.has(target.id)) {
+          const signals = sim.events.filter(
+            (e) =>
+              e.actorId === actor.id &&
+              e.targetId === target.id &&
+              (e.kind === "flash" || e.kind === "horn"),
+          );
+          assert.ok(signals.length > 0);
+          yielded.set(
+            target.id,
+            signals.some((e) => e.kind === "horn") ? "horn" : "flash",
+          );
+        }
+      }
+    }
+    assert.ok([...yielded.values()].includes("flash"));
+    assert.ok([...yielded.values()].includes("horn"));
+    for (const horn of sim.events.filter((e) => e.kind === "horn")) {
+      const flashes = sim.events.filter(
+        (e) =>
+          e.kind === "flash" &&
+          e.actorId === horn.actorId &&
+          e.targetId === horn.targetId &&
+          e.time < horn.time,
+      );
+      assert.equal(flashes.length, 3);
+      assert.ok(horn.time - flashes[0].time >= 6 - 1e-8);
+      assert.ok(sim.vehicles.find((v) => v.id === horn.actorId)!.fast);
+    }
+    sim.setArcade(DEFAULT_ARCADE);
+    assert.ok(
+      sim.vehicles.every(
+        (v) => v.signalUntil === 0 && v.hornUntil === 0 && v.yieldUntil === 0,
+      ),
+    );
   });
 }
