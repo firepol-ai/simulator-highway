@@ -732,8 +732,23 @@ export class Simulation {
         vehicle.cooldown = 5;
       } else if (vehicle.lane === 0 && this.canMerge(vehicle, 1)) {
         const right = this.leader(vehicle, 1);
+        // Ordinary drivers need not hold up an approaching faster car merely
+        // because another right-lane pass will be needed farther down the road.
+        const fasterBehind =
+          !vehicle.fast &&
+          vehicle.kind === "car" &&
+          this.vehicles.some(
+            (other) =>
+              !other.crashed &&
+              other.fast &&
+              other.kind === "car" &&
+              other.lane === 0 &&
+              other.desiredSpeed > vehicle.desiredSpeed + kmh(5) &&
+              this.distance(other.x, vehicle.x) < 100,
+          );
         const wantsRight =
           vehicle.kind === "blocker" ||
+          (fasterBehind && (!right || right.gap > vehicle.speed * 3)) ||
           yieldingToFaster ||
           !right ||
           right.gap > vehicle.speed * 5 ||

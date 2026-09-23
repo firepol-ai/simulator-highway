@@ -965,3 +965,45 @@ for (const roadLength of [1200, 6000]) {
     assert.equal(actor.hornUntil, 0);
   });
 }
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: ordinary left-lane drivers let faster traffic catch the blocker`, () => {
+    const sim = new Simulation(
+      { ...DEFAULT_SETTINGS, fasterSpeed: 150, blockerSpeed: 100 },
+      DEFAULT_ARCADE,
+      roadLength,
+    );
+    const fast = sim.vehicles[2],
+      ordinary = sim.vehicles[3],
+      truck = sim.vehicles[1];
+    sim.vehicles = [sim.blocker, fast, ordinary, truck];
+    Object.assign(sim.blocker, { x: 700 });
+    Object.assign(fast, { x: 450, cooldown: 1000 });
+    Object.assign(ordinary, { x: 500, cooldown: 0 });
+    Object.assign(truck, { x: 610 });
+    sim.step(0.05);
+    assert.equal(ordinary.lane, 1);
+    assert.equal(fast.lane, 0);
+    advance(sim, 30);
+    assert.equal(sim.leader(fast)!.vehicle.id, sim.blocker.id);
+    assert.ok(sim.leader(fast)!.gap < 60);
+    assert.ok(fast.speed * 3.6 < 110);
+  });
+}
+
+test("unobstructed winding traffic at 120 covers twenty percent more road than at 100", () => {
+  const distances = [100, 120].map((speedLimit) => {
+    const sim = new Simulation(
+      { ...DEFAULT_SETTINGS, speedLimit },
+      DEFAULT_ARCADE,
+      6000,
+    );
+    const car = sim.vehicles[3];
+    sim.vehicles = [sim.blocker, car];
+    Object.assign(sim.blocker, { x: 4000 });
+    Object.assign(car, { x: 100, cooldown: 1000 });
+    advance(sim, 10);
+    return car.x - 100;
+  });
+  assert.ok(Math.abs(distances[1] / distances[0] - 1.2) < 1e-8);
+});

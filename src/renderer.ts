@@ -129,13 +129,14 @@ export class RoadRenderer {
     ctx.fillText("RIGHT · CRUISING  →", 22, center + 51);
     ctx.letterSpacing = "0px";
 
-    // Zoom narrow displays around the blocker so queued cars remain distinct.
-    const visibleLength = Math.min(ROAD_LENGTH, w / 0.72);
+    // Follow the blocker at a scale where physical bumper gaps stay visible.
+    const visibleLength = Math.min(ROAD_LENGTH, w / 3);
     const origin =
       visibleLength < ROAD_LENGTH
         ? (sim.blocker.x - visibleLength * 0.72 + ROAD_LENGTH) % ROAD_LENGTH
         : 0;
     const scale = w / visibleLength;
+    const speedLabels: number[] = [];
     for (const vehicle of [...sim.vehicles].sort(
       (a, b) => vehicleOrder(a) - vehicleOrder(b),
     )) {
@@ -152,6 +153,11 @@ export class RoadRenderer {
       const length = vehicle.kind === "truck" ? 33 : 21;
       const width = vehicle.kind === "truck" ? 15 : 12;
       const isBlocker = vehicle.kind === "blocker";
+      const bodyScale = (vehicle.length * scale) / length;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(bodyScale, bodyScale);
+      ctx.translate(-x, -y);
       if (isBlocker) {
         ctx.strokeStyle = sim.phase === "clear" ? "#c9e9a8" : "#edbd76";
         ctx.lineWidth = 1.5;
@@ -242,6 +248,7 @@ export class RoadRenderer {
         );
         ctx.stroke();
       }
+      ctx.restore();
       if (sim.attack?.kind === "gun" && sim.attack.actorId === vehicle.id) {
         const distance =
           (sim.blocker.x - vehicle.x + ROAD_LENGTH) % ROAD_LENGTH;
@@ -267,7 +274,12 @@ export class RoadRenderer {
         ctx.lineTo(x + 17, y + 6);
         ctx.fill();
       }
-      if (this.showSpeeds && !isBlocker) {
+      if (
+        this.showSpeeds &&
+        !isBlocker &&
+        !speedLabels.some((label) => Math.abs(label - x) < 25)
+      ) {
+        speedLabels.push(x);
         ctx.font = "9px Arial";
         ctx.textAlign = "center";
         ctx.fillStyle = "#eef0e4aa";
