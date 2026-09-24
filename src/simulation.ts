@@ -834,17 +834,24 @@ export class Simulation {
           )
             front = left;
         }
-        // Once alongside an available right-lane slot, match its leader rather
-        // than repeatedly accelerating past every gap while trying to clear.
-        if (vehicle.kind === "blocker" && this.phase === "overtaking") {
-          const right = this.leader(vehicle, 1);
+        // Match the destination lane's leader for either intervention. Without
+        // this, a returning blocker keeps chasing the next left-lane car instead
+        // of leaving the front clearance needed to enter the gap being opened.
+        if (
+          vehicle.kind === "blocker" &&
+          (this.phase === "overtaking" || this.phase === "returning")
+        ) {
+          const destination = this.leader(
+            vehicle,
+            this.phase === "returning" ? 0 : 1,
+          );
           if (
-            right &&
-            right.gap > 0 &&
-            right.gap < vehicle.speed * 4 &&
-            (!front || right.gap < front.gap)
+            destination &&
+            destination.gap > 0 &&
+            destination.gap < vehicle.speed * 4 &&
+            (!front || destination.gap < front.gap)
           )
-            front = right;
+            front = destination;
         }
         // A requested lane change prompts the following driver in that lane to yield.
         const yieldingLane =
@@ -877,7 +884,8 @@ export class Simulation {
               vehicle.passTarget !== null);
           const followingDistance = yielding
             ? 3 + vehicle.speed * 2.2
-            : vehicle.kind === "blocker" && this.phase === "overtaking"
+            : vehicle.kind === "blocker" &&
+                (this.phase === "overtaking" || this.phase === "returning")
               ? 3 + vehicle.speed * 1.4
               : impatient
                 ? 2 + Math.min(2, vehicle.speed * 0.025)
@@ -888,6 +896,20 @@ export class Simulation {
               Math.max(0, closing) * 0.25 +
               Math.max(0, closing) ** 2 / (2 * 4),
           );
+
+          if (
+            this.phase === "returning" &&
+            (vehicle.kind === "blocker" || yielding)
+          ) {
+            // Deliberately open the requested merge slot instead of inching
+            // toward the larger headway using the normal cruising controller.
+            acceleration = Math.min(
+              acceleration,
+              front.vehicle.speed -
+                vehicle.speed +
+                (front.gap - followingDistance) / 2,
+            );
+          }
 
           // Independent free-speed and following constraints: distant traffic
           // must not reduce a driver's cruising target before it is caught.

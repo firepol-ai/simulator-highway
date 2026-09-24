@@ -1107,3 +1107,45 @@ for (const roadLength of [1200, 6000]) {
     }
   });
 }
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: occupy opens front clearance instead of following beside a full left-lane gap forever`, () => {
+    const sim = new Simulation(DEFAULT_SETTINGS, DEFAULT_ARCADE, roadLength);
+    const leader = sim.vehicles[3],
+      follower = sim.vehicles[4];
+    sim.vehicles = [sim.blocker, leader, follower];
+    sim.release();
+    Object.assign(sim.blocker, {
+      lane: 1,
+      visualLane: 1,
+      x: 500,
+      speed: 120 / 3.6,
+    });
+    Object.assign(leader, {
+      lane: 0,
+      visualLane: 0,
+      x: 520,
+      speed: 120 / 3.6,
+      cooldown: 1000,
+    });
+    Object.assign(follower, {
+      lane: 0,
+      visualLane: 0,
+      x: 470,
+      speed: 120 / 3.6,
+      cooldown: 1000,
+    });
+    const id = sim.blocker.id;
+    sim.occupy();
+    assert.equal(sim.phase, "returning");
+    for (let i = 0; i < 600 && sim.phase !== "blocking"; i++) {
+      sim.step(0.05);
+      for (const car of sim.vehicles)
+        assert.ok((sim.leader(car)?.gap ?? Infinity) >= 1 - 1e-8);
+    }
+    assert.equal(sim.phase, "blocking");
+    assert.equal(sim.blocker.id, id);
+    assert.equal(sim.blocker.lane, 0);
+    assert.ok(sim.time > 0);
+  });
+}
