@@ -421,3 +421,24 @@ test("straight mode supports 800 cars and preserves its count when switching vie
   await expect(page.locator("#vehicle-count-value")).toHaveText("44");
   expect(errors).toEqual([]);
 });
+
+test("winding view clears and reoccupies the left lane with the same blocker", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.locator("#view-switch").click();
+  await page.getByRole("button", { name: "5×" }).click();
+  await page.getByRole("button", { name: "Clear the left lane" }).click();
+  await expect(page.locator("#road-status")).toHaveText("Blocker moved right", {
+    timeout: 20000,
+  });
+  await page.getByRole("button", { name: "Occupy the left lane" }).click();
+  await expect(page.locator("#road-status")).toHaveText("Left lane blocked", {
+    timeout: 20000,
+  });
+  await expect(page.locator("#release")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.locator("#clock")).not.toHaveText("00:00");
+});

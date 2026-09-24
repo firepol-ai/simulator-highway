@@ -1149,3 +1149,23 @@ for (const roadLength of [1200, 6000]) {
     assert.ok(sim.time > 0);
   });
 }
+
+test("occupy returns promptly in the reported 800-car impatient-traffic scenario", () => {
+  const sim = new Simulation(
+    { ...DEFAULT_SETTINGS, vehicleCount: 800, rightLaneSpeed: 98 },
+    { ...DEFAULT_ARCADE, undertaking: true, signals: true },
+    6000,
+  );
+  advance(sim, 30);
+  sim.release();
+  for (let i = 0; i < 1800 && sim.phase !== "clear"; i++) sim.step(0.1);
+  assert.equal(sim.phase, "clear");
+  const time = sim.time,
+    id = sim.blocker.id;
+  sim.occupy();
+  for (let i = 0; i < 300 && sim.phase !== "blocking"; i++) sim.step(0.1);
+  assert.equal(sim.phase, "blocking");
+  assert.equal(sim.blocker.lane, 0);
+  assert.equal(sim.blocker.id, id);
+  assert.ok(sim.time > time && sim.time - time <= 30);
+});
