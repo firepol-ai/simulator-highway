@@ -193,7 +193,7 @@ test("impatient drivers signal only when enabled and blocked", () => {
   assert.equal(free.events.length, 0);
 });
 
-test("random right-side passes return left after gaining position without overlap", () => {
+test("impatient right-side passes return left after gaining position without overlap", () => {
   const sim = new Simulation(undefined, {
     ...DEFAULT_ARCADE,
     undertaking: true,
@@ -208,7 +208,10 @@ test("random right-side passes return left after gaining position without overla
     for (const event of sim.events) {
       if (event.id <= lastEvent) continue;
       lastEvent = event.id;
-      if (event.kind === "undertake") started.add(event.actorId);
+      if (event.kind === "undertake") {
+        assert.ok(sim.vehicles.find((v) => v.id === event.actorId)!.fast);
+        started.add(event.actorId);
+      }
       if (event.kind === "return") {
         assert.ok(started.has(event.actorId));
         const actor = sim.vehicles.find(
@@ -238,8 +241,8 @@ test("horns and lights only address traffic in the left lane", () => {
   });
   let lastEvent = 0;
   let horns = 0;
-  for (let i = 0; i < 1800; i++) {
-    sim.step(0.1);
+  for (let i = 0; i < 3600; i++) {
+    sim.step(0.05);
     for (const vehicle of sim.vehicles) {
       if (vehicle.lane === 1) assert.equal(vehicle.signalUntil, 0);
     }
@@ -248,6 +251,7 @@ test("horns and lights only address traffic in the left lane", () => {
       lastEvent = event.id;
       if (event.kind !== "horn") continue;
       horns++;
+      assert.ok(sim.vehicles.find((v) => v.id === event.actorId)!.fast);
       assert.equal(
         sim.vehicles.find((vehicle) => vehicle.id === event.actorId)!.lane,
         0,
@@ -466,6 +470,9 @@ test("spawning waits rather than inserting a blocker into a full lane", () => {
   assert.deepEqual(sim.vehicles, vehicles);
   assert.equal(sim.phase, "crashed");
   assert.equal(sim.wrecks.length, 1);
+  assert.equal(sim.spawning, true);
+  sim.reset();
+  assert.equal(sim.spawning, false);
 });
 
 test("the same blocker can repeatedly clear and reoccupy without resetting traffic", () => {
@@ -514,4 +521,651 @@ test("lane requests can be reversed while a merge is pending", () => {
   sim.release();
   assert.equal(sim.phase, "clear");
   assert.equal(sim.blocker.lane, 1);
+});
+
+test("six kilometre traffic stays separated and the blocker can clear and return", () => {
+  const sim = new Simulation(
+    { ...DEFAULT_SETTINGS, vehicleCount: 220 },
+    DEFAULT_ARCADE,
+    6000,
+  );
+  assert.equal(sim.vehicles.length, 220);
+  assert.ok(sim.vehicles.some((v) => v.x > 5000));
+  advance(sim, 30);
+  sim.release();
+  advance(sim, 120);
+  assert.equal(sim.phase, "clear");
+  sim.occupy();
+  advance(sim, 90);
+  assert.equal(sim.phase, "blocking");
+  for (const lane of [0, 1]) {
+    const cars = sim.vehicles
+      .filter((v) => v.lane === lane)
+      .sort((a, b) => a.x - b.x);
+    for (let i = 0; i < cars.length; i++) {
+      const car = cars[i],
+        ahead = cars[(i + 1) % cars.length];
+      assert.ok(car.x >= 0 && car.x < 6000 && Number.isFinite(car.speed));
+      assert.ok(
+        (ahead.x - car.x + 6000) % 6000 >= (ahead.length + car.length) / 2,
+      );
+    }
+  }
+  assert.equal(sim.metrics.flow, (sim.metrics.speed * sim.vehicles.length) / 6);
+});
+
+test("right-lane slow-driver speed and 300 km/h general limit are independent", () => {
+  const sim = new Simulation({
+    ...DEFAULT_SETTINGS,
+    speedLimit: 300,
+    rightLaneSpeed: 70,
+    fasterSpeed: 300,
+  });
+  const trucks = sim.vehicles.filter((v) => v.kind === "truck");
+  assert.ok(trucks.length > 0);
+  assert.ok(trucks.every((v) => Math.abs(v.speed * 3.6 - 70) < 0.001));
+  advance(sim, 60);
+  assert.ok(trucks.every((v) => v.speed * 3.6 <= 70.001));
+  assert.equal(sim.settings.speedLimit, 300);
+  sim.configure({ ...sim.settings, rightLaneSpeed: 300 });
+  assert.ok(
+    sim.vehicles
+      .filter((v) => v.kind === "truck")
+      .every((v) => Math.abs(v.speed * 3.6 - 300) < 0.001),
+  );
+});
+
+test("800-vehicle winding traffic opens a gap for a queued spawn and preserves its wreck", () => {
+  const sim = new Simulation(
+    { ...DEFAULT_SETTINGS, vehicleCount: 800 },
+    { ...DEFAULT_ARCADE, spyMode: true },
+    6000,
+  );
+  for (let i = 0; i < 600 && !sim.crash; i++) sim.step(0.1);
+  assert.ok(sim.crash);
+  const victim = sim.blocker;
+  const wrecks = structuredClone(sim.wrecks);
+  const requestedAt = sim.time;
+  // Explicitly fill the insertion gaps: higher density no longer implies a
+  // road-wide slowdown or guarantees that every possible spawn slot is full.
+  const left = sim.vehicles.filter((v) => !v.crashed && v.lane === 0);
+  left.forEach((v, i) => {
+    v.x = (i * sim.roadLength) / left.length;
+    v.speed = 120 / 3.6;
+  });
+  assert.equal(sim.spawnBlocker(), false);
+  assert.equal(sim.spawning, true);
+  for (let i = 0; i < 600 && sim.spawning; i++) sim.step(0.1);
+  assert.equal(sim.spawning, false);
+  assert.equal(sim.phase, "blocking");
+  assert.ok(sim.time > requestedAt);
+  assert.equal(sim.vehicles.filter((v) => !v.crashed).length, 800);
+  assert.deepEqual(sim.wrecks, wrecks);
+  assert.ok(sim.vehicles.includes(victim));
+  assert.ok(victim.crashed);
+  for (const car of sim.vehicles.filter((v) => !v.crashed)) {
+    assert.ok(Number.isFinite(car.speed));
+    assert.ok((sim.leader(car)?.gap ?? Infinity) >= 1 - 1e-8);
+  }
+  sim.reset();
+  assert.equal(sim.spawning, false);
+  assert.equal(sim.vehicles.length, 800);
+});
+
+test("indexed traffic matches the full neighbour scan through lane changes and arcade events", () => {
+  class ReferenceSimulation extends Simulation {
+    override leader(
+      vehicle: Simulation["vehicles"][number],
+      lane = vehicle.lane,
+    ) {
+      let result: ReturnType<Simulation["leader"]> = null;
+      for (const other of this.vehicles) {
+        if (other.crashed || other.id === vehicle.id || other.lane !== lane)
+          continue;
+        const gap =
+          ((other.x - vehicle.x + this.roadLength) % this.roadLength) -
+          (vehicle.length + other.length) / 2;
+        if (!result || gap < result.gap) result = { vehicle: other, gap };
+      }
+      return result;
+    }
+  }
+  const settings = { ...DEFAULT_SETTINGS, vehicleCount: 80 };
+  const arcade = {
+    undertaking: true,
+    signals: true,
+    roadRage: false,
+    spyMode: true,
+  };
+  const indexed = new Simulation(settings, arcade, 6000);
+  const reference = new ReferenceSimulation(settings, arcade, 6000);
+  for (let i = 0; i < 600; i++) {
+    indexed.step(0.1);
+    reference.step(0.1);
+    if (i === 300) {
+      indexed.spawnBlocker();
+      reference.spawnBlocker();
+    }
+    if (i === 400) {
+      indexed.release();
+      reference.release();
+    }
+  }
+  assert.deepEqual(indexed.vehicles, reference.vehicles);
+  assert.deepEqual(indexed.events, reference.events);
+  assert.deepEqual(indexed.samples, reference.samples);
+});
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: drivers hold their targets until catching the blocker queue`, () => {
+    const sim = new Simulation(DEFAULT_SETTINGS, DEFAULT_ARCADE, roadLength);
+    const fast = sim.vehicles[2],
+      regular = sim.vehicles[3];
+    assert.equal(fast.fast, true);
+    assert.equal(regular.fast, false);
+    assert.ok(
+      Math.abs(regular.desiredSpeed * 3.6 - sim.settings.speedLimit) < 1e-8,
+    );
+    sim.vehicles = [sim.blocker, fast, regular];
+    Object.assign(sim.blocker, { x: 600, cooldown: 1000 });
+    Object.assign(fast, { x: 100, cooldown: 1000 });
+    Object.assign(regular, { x: 300, cooldown: 1000 });
+    advance(sim, 10);
+    assert.ok(fast.speed * 3.6 > 134.9);
+    assert.ok(regular.speed * 3.6 > 119.9);
+    advance(sim, 150);
+    assert.ok(fast.speed * 3.6 < 112);
+    assert.ok(regular.speed * 3.6 < 112);
+    assert.ok(sim.leader(fast)!.gap < 70);
+    assert.ok(sim.leader(regular)!.gap < 70);
+  });
+
+  for (const initialLane of [0, 1] as const) {
+    test(`${roadLength}m: faster drivers accelerate on the right and complete a real pass from lane ${initialLane}`, () => {
+      const sim = new Simulation(
+        { ...DEFAULT_SETTINGS, fasterSpeed: 180, blockerSpeed: 75 },
+        { ...DEFAULT_ARCADE, undertaking: true },
+        roadLength,
+      );
+      const actor = sim.vehicles[2];
+      sim.vehicles = [sim.blocker, actor];
+      Object.assign(sim.blocker, { x: 500 });
+      Object.assign(actor, {
+        x: 450,
+        speed: 75 / 3.6,
+        lane: initialLane,
+        visualLane: initialLane,
+        blockedFor: 5,
+        cooldown: 0,
+      });
+      let rightSpeed = 0;
+      for (
+        let i = 0;
+        i < 1200 && !sim.events.some((e) => e.kind === "return");
+        i++
+      ) {
+        sim.step(0.05);
+        if (actor.lane === 1)
+          rightSpeed = Math.max(rightSpeed, actor.speed * 3.6);
+        assert.ok((sim.leader(actor)?.gap ?? Infinity) >= 1 - 1e-8);
+      }
+      assert.ok(
+        sim.events.some(
+          (e) => e.kind === "undertake" && e.actorId === actor.id,
+        ),
+      );
+      assert.ok(
+        sim.events.some((e) => e.kind === "return" && e.actorId === actor.id),
+      );
+      assert.ok(rightSpeed > 90, `right-lane speed ${rightSpeed}`);
+      assert.equal(actor.lane, 0);
+      const ahead = (actor.x - sim.blocker.x + roadLength) % roadLength;
+      assert.ok(
+        ahead > (actor.length + sim.blocker.length) / 2 + 8 &&
+          ahead < roadLength / 2,
+      );
+    });
+  }
+
+  test(`${roadLength}m: ordinary drivers neither undertake nor signal`, () => {
+    const sim = new Simulation(
+      { ...DEFAULT_SETTINGS, blockerSpeed: 75 },
+      { ...DEFAULT_ARCADE, undertaking: true, signals: true },
+      roadLength,
+    );
+    const ordinary = sim.vehicles[3];
+    sim.vehicles = [sim.blocker, ordinary];
+    Object.assign(sim.blocker, { x: 500 });
+    Object.assign(ordinary, {
+      x: 450,
+      speed: 75 / 3.6,
+      blockedFor: 10,
+      cooldown: 1000,
+    });
+    advance(sim, 30);
+    assert.equal(
+      sim.events.filter(
+        (e) =>
+          e.kind === "horn" || e.kind === "flash" || e.kind === "undertake",
+      ).length,
+      0,
+    );
+    assert.equal(ordinary.signalUntil, 0);
+  });
+
+  test(`${roadLength}m: a signalled ordinary driver yields safely but the blocker does not`, () => {
+    const sim = new Simulation(
+      DEFAULT_SETTINGS,
+      { ...DEFAULT_ARCADE, signals: true },
+      roadLength,
+    );
+    const actor = sim.vehicles[2],
+      ordinary = sim.vehicles[3],
+      truck = sim.vehicles[1];
+    sim.vehicles = [sim.blocker, actor, ordinary, truck];
+    Object.assign(sim.blocker, { x: 900 });
+    Object.assign(actor, {
+      x: 188,
+      speed: 120 / 3.6,
+      blockedFor: 10,
+      cooldown: 1000,
+    });
+    Object.assign(ordinary, { x: 200, cooldown: 1000 });
+    Object.assign(truck, { x: 300 });
+    for (let i = 0; i < 400 && ordinary.lane === 0; i++) sim.step(0.05);
+    assert.ok(
+      sim.events.some(
+        (e) =>
+          (e.kind === "horn" || e.kind === "flash") &&
+          e.actorId === actor.id &&
+          e.targetId === ordinary.id,
+      ),
+    );
+    assert.equal(ordinary.lane, 1);
+    assert.ok((sim.leader(ordinary)?.gap ?? Infinity) >= 15);
+    assert.equal(sim.blocker.lane, 0);
+    assert.equal(sim.blocker.yieldUntil, 0);
+  });
+}
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: flashes precede horns and drivers respond at different stages`, () => {
+    const sim = new Simulation(
+      DEFAULT_SETTINGS,
+      { ...DEFAULT_ARCADE, signals: true },
+      roadLength,
+    );
+    const pairs = [0, 1, 2].map((i) => ({
+      actor: sim.vehicles[2 + i * 3],
+      target: sim.vehicles[3 + i * 3],
+    }));
+    sim.blocker.x = 1100;
+    for (const [i, { actor, target }] of pairs.entries()) {
+      Object.assign(actor, {
+        x: 188 + i * 300,
+        speed: 120 / 3.6,
+        blockedFor: 10,
+        cooldown: 1000,
+      });
+      Object.assign(target, { x: 200 + i * 300, cooldown: 1000 });
+    }
+    sim.vehicles = [sim.blocker, ...pairs.flatMap((p) => [p.actor, p.target])];
+    const yielded = new Map<number, "flash" | "horn">();
+    for (let i = 0; i < 400 && yielded.size < pairs.length; i++) {
+      sim.step(0.05);
+      for (const { actor, target } of pairs) {
+        if (target.lane === 1 && !yielded.has(target.id)) {
+          const signals = sim.events.filter(
+            (e) =>
+              e.actorId === actor.id &&
+              e.targetId === target.id &&
+              (e.kind === "flash" || e.kind === "horn"),
+          );
+          assert.ok(signals.length > 0);
+          yielded.set(
+            target.id,
+            signals.some((e) => e.kind === "horn") ? "horn" : "flash",
+          );
+        }
+      }
+    }
+    assert.ok([...yielded.values()].includes("flash"));
+    assert.ok([...yielded.values()].includes("horn"));
+    for (const horn of sim.events.filter((e) => e.kind === "horn")) {
+      const flashes = sim.events.filter(
+        (e) =>
+          e.kind === "flash" &&
+          e.actorId === horn.actorId &&
+          e.targetId === horn.targetId &&
+          e.time < horn.time,
+      );
+      assert.equal(flashes.length, 3);
+      assert.ok(horn.time - flashes[0].time >= 6 - 1e-8);
+      assert.ok(sim.vehicles.find((v) => v.id === horn.actorId)!.fast);
+    }
+    sim.setArcade(DEFAULT_ARCADE);
+    assert.ok(
+      sim.vehicles.every(
+        (v) => v.signalUntil === 0 && v.hornUntil === 0 && v.yieldUntil === 0,
+      ),
+    );
+  });
+}
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: ordinary drivers overtake slower right-lane traffic on the left and return right`, () => {
+    const sim = new Simulation(
+      { ...DEFAULT_SETTINGS, rightLaneSpeed: 80 },
+      DEFAULT_ARCADE,
+      roadLength,
+    );
+    const ordinary = sim.vehicles[3],
+      truck = sim.vehicles[1];
+    sim.vehicles = [sim.blocker, ordinary, truck];
+    Object.assign(sim.blocker, { x: 1000 });
+    Object.assign(truck, { x: 500 });
+    Object.assign(ordinary, {
+      x: 450,
+      lane: 1,
+      visualLane: 1,
+      speed: 80 / 3.6,
+      cooldown: 0,
+    });
+    let overtookLeft = false,
+      returnedRight = false;
+    for (let i = 0; i < 1200 && !returnedRight; i++) {
+      sim.step(0.05);
+      if (ordinary.lane === 0) overtookLeft = true;
+      const ahead = (ordinary.x - truck.x + roadLength) % roadLength;
+      if (
+        overtookLeft &&
+        ordinary.lane === 1 &&
+        ahead > 15 &&
+        ahead < roadLength / 2
+      )
+        returnedRight = true;
+    }
+    assert.equal(ordinary.fast, false);
+    assert.ok(overtookLeft && returnedRight);
+    assert.ok(ordinary.speed * 3.6 <= sim.settings.speedLimit + 1e-8);
+  });
+
+  test(`${roadLength}m: the blocker ignores staged signals`, () => {
+    const sim = new Simulation(
+      { ...DEFAULT_SETTINGS, blockerSpeed: 90 },
+      { ...DEFAULT_ARCADE, signals: true },
+      roadLength,
+    );
+    const actor = sim.vehicles[2];
+    sim.vehicles = [sim.blocker, actor];
+    Object.assign(sim.blocker, { x: 500 });
+    Object.assign(actor, {
+      x: 488,
+      speed: 90 / 3.6,
+      cooldown: 1000,
+      blockedFor: 10,
+    });
+    advance(sim, 20);
+    assert.ok(
+      sim.events.some(
+        (e) => e.kind === "horn" && e.targetId === sim.blocker.id,
+      ),
+    );
+    assert.equal(sim.blocker.lane, 0);
+    assert.equal(sim.blocker.yieldUntil, 0);
+    sim.setArcade(DEFAULT_ARCADE);
+    assert.equal(actor.signalFlashes, 0);
+    assert.equal(actor.signalTarget, null);
+  });
+}
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: impatient followers close the gap and signal only when nearly bumper to bumper`, () => {
+    const make = (impatient: boolean) => {
+      const sim = new Simulation(
+        { ...DEFAULT_SETTINGS, blockerSpeed: 110 },
+        { ...DEFAULT_ARCADE, signals: impatient },
+        roadLength,
+      );
+      const actor = sim.vehicles[2];
+      sim.vehicles = [sim.blocker, actor];
+      Object.assign(sim.blocker, { x: 500 });
+      Object.assign(actor, {
+        x: 440,
+        speed: 110 / 3.6,
+        cooldown: 1000,
+        blockedFor: 10,
+      });
+      return { sim, actor };
+    };
+    const { sim, actor } = make(true);
+    const ordinarySpacing = make(false);
+    sim.step(0.05);
+    assert.equal(
+      sim.events.length,
+      0,
+      "no signalling from a distant queue position",
+    );
+    let lastEvent = 0;
+    for (let i = 0; i < 1200; i++) {
+      sim.step(0.05);
+      ordinarySpacing.sim.step(0.05);
+      for (const event of sim.events) {
+        if (event.id <= lastEvent) continue;
+        lastEvent = event.id;
+        if (event.kind === "flash" || event.kind === "horn") {
+          assert.ok(sim.leader(actor)!.gap <= 10.01);
+          assert.equal(event.actorId, actor.id);
+        }
+      }
+      assert.ok(sim.leader(actor)!.gap >= 1 - 1e-8);
+    }
+    assert.ok(sim.events.some((e) => e.kind === "flash"));
+    assert.ok(sim.events.some((e) => e.kind === "horn"));
+    assert.ok(sim.leader(actor)!.gap < 9);
+    assert.ok(
+      ordinarySpacing.sim.leader(ordinarySpacing.actor)!.gap >
+        sim.leader(actor)!.gap + 1,
+    );
+    assert.ok(ordinarySpacing.sim.leader(ordinarySpacing.actor)!.gap < 7);
+    // An opening ahead immediately ends the lights/horn, even mid-burst.
+    actor.signalUntil = actor.hornUntil = sim.time + 1;
+    sim.blocker.x = (actor.x + 100) % roadLength;
+    sim.step(0.05);
+    assert.equal(actor.signalUntil, 0);
+    assert.equal(actor.hornUntil, 0);
+  });
+}
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: ordinary left-lane drivers let faster traffic catch the blocker`, () => {
+    const sim = new Simulation(
+      { ...DEFAULT_SETTINGS, fasterSpeed: 150, blockerSpeed: 100 },
+      DEFAULT_ARCADE,
+      roadLength,
+    );
+    const fast = sim.vehicles[2],
+      ordinary = sim.vehicles[3],
+      truck = sim.vehicles[1];
+    sim.vehicles = [sim.blocker, fast, ordinary, truck];
+    Object.assign(sim.blocker, { x: 700 });
+    Object.assign(fast, { x: 450, cooldown: 1000 });
+    Object.assign(ordinary, { x: 500, cooldown: 0 });
+    Object.assign(truck, { x: 610 });
+    sim.step(0.05);
+    assert.equal(ordinary.lane, 1);
+    assert.equal(fast.lane, 0);
+    advance(sim, 30);
+    assert.equal(sim.leader(fast)!.vehicle.id, sim.blocker.id);
+    assert.ok(sim.leader(fast)!.gap < 60);
+    assert.ok(fast.speed * 3.6 < 110);
+  });
+}
+
+test("unobstructed winding traffic at 120 covers twenty percent more road than at 100", () => {
+  const distances = [100, 120].map((speedLimit) => {
+    const sim = new Simulation(
+      { ...DEFAULT_SETTINGS, speedLimit },
+      DEFAULT_ARCADE,
+      6000,
+    );
+    const car = sim.vehicles[3];
+    sim.vehicles = [sim.blocker, car];
+    Object.assign(sim.blocker, { x: 4000 });
+    Object.assign(car, { x: 100, cooldown: 1000 });
+    advance(sim, 10);
+    return car.x - 100;
+  });
+  assert.ok(Math.abs(distances[1] / distances[0] - 1.2) < 1e-8);
+});
+
+for (const vehicleCount of [130, 400, 800]) {
+  test(`${vehicleCount} equal-speed winding vehicles maintain cruising speed instead of a density speed cap`, () => {
+    const sim = new Simulation(
+      {
+        speedLimit: 120,
+        fasterSpeed: 120,
+        blockerSpeed: 120,
+        rightLaneSpeed: 120,
+        vehicleCount,
+      },
+      DEFAULT_ARCADE,
+      6000,
+    );
+    advance(sim, 10);
+    assert.ok(sim.vehicles.every((v) => v.speed * 3.6 > 119.9));
+  });
+}
+
+test("a slow blocker creates a local queue without slowing distant dense traffic", () => {
+  const sim = new Simulation(
+    {
+      speedLimit: 120,
+      fasterSpeed: 120,
+      blockerSpeed: 80,
+      rightLaneSpeed: 120,
+      vehicleCount: 800,
+    },
+    DEFAULT_ARCADE,
+    6000,
+  );
+  advance(sim, 10);
+  const behind = (x: number) =>
+    (sim.blocker.x - x + sim.roadLength) % sim.roadLength;
+  const queued = sim.vehicles.filter(
+    (v) => v.kind === "car" && v.lane === 0 && behind(v.x) < 250,
+  );
+  const distant = sim.vehicles.filter(
+    (v) => v.lane === 0 && behind(v.x) > 1000 && behind(v.x) < 4000,
+  );
+  assert.ok(queued.some((v) => v.speed * 3.6 < 100));
+  assert.ok(distant.length > 100);
+  assert.ok(distant.every((v) => v.speed * 3.6 > 119.9));
+});
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: impatient drivers promptly use a large right-side gap despite a slower truck farther ahead`, () => {
+    for (const space of [70, 180]) {
+      const sim = new Simulation(
+        { ...DEFAULT_SETTINGS, rightLaneSpeed: 98 },
+        { ...DEFAULT_ARCADE, undertaking: true },
+        roadLength,
+      );
+      const actor = sim.vehicles[2],
+        truck = sim.vehicles[1];
+      sim.vehicles = [sim.blocker, actor, truck];
+      Object.assign(sim.blocker, { x: 500 });
+      Object.assign(actor, {
+        x: 480,
+        speed: 110 / 3.6,
+        blockedFor: 2,
+        cooldown: 0,
+      });
+      Object.assign(truck, { x: 480 + space });
+      advance(sim, 2);
+      assert.equal(
+        sim.events.some(
+          (e) => e.kind === "undertake" && e.actorId === actor.id,
+        ),
+        space === 180,
+      );
+      if (space === 180) {
+        for (
+          let i = 0;
+          i < 600 && !sim.events.some((e) => e.kind === "return");
+          i++
+        )
+          sim.step(0.05);
+        assert.ok(
+          sim.events.some((e) => e.kind === "return" && e.actorId === actor.id),
+        );
+        assert.ok(
+          (actor.x - sim.blocker.x + roadLength) % roadLength < roadLength / 2,
+        );
+        assert.ok((sim.leader(actor)?.gap ?? Infinity) >= 1);
+      }
+    }
+  });
+}
+
+for (const roadLength of [1200, 6000]) {
+  test(`${roadLength}m: occupy opens front clearance instead of following beside a full left-lane gap forever`, () => {
+    const sim = new Simulation(DEFAULT_SETTINGS, DEFAULT_ARCADE, roadLength);
+    const leader = sim.vehicles[3],
+      follower = sim.vehicles[4];
+    sim.vehicles = [sim.blocker, leader, follower];
+    sim.release();
+    Object.assign(sim.blocker, {
+      lane: 1,
+      visualLane: 1,
+      x: 500,
+      speed: 120 / 3.6,
+    });
+    Object.assign(leader, {
+      lane: 0,
+      visualLane: 0,
+      x: 520,
+      speed: 120 / 3.6,
+      cooldown: 1000,
+    });
+    Object.assign(follower, {
+      lane: 0,
+      visualLane: 0,
+      x: 470,
+      speed: 120 / 3.6,
+      cooldown: 1000,
+    });
+    const id = sim.blocker.id;
+    sim.occupy();
+    assert.equal(sim.phase, "returning");
+    for (let i = 0; i < 600 && sim.phase !== "blocking"; i++) {
+      sim.step(0.05);
+      for (const car of sim.vehicles)
+        assert.ok((sim.leader(car)?.gap ?? Infinity) >= 1 - 1e-8);
+    }
+    assert.equal(sim.phase, "blocking");
+    assert.equal(sim.blocker.id, id);
+    assert.equal(sim.blocker.lane, 0);
+    assert.ok(sim.time > 0);
+  });
+}
+
+test("occupy returns promptly in the reported 800-car impatient-traffic scenario", () => {
+  const sim = new Simulation(
+    { ...DEFAULT_SETTINGS, vehicleCount: 800, rightLaneSpeed: 98 },
+    { ...DEFAULT_ARCADE, undertaking: true, signals: true },
+    6000,
+  );
+  advance(sim, 30);
+  sim.release();
+  for (let i = 0; i < 1800 && sim.phase !== "clear"; i++) sim.step(0.1);
+  assert.equal(sim.phase, "clear");
+  const time = sim.time,
+    id = sim.blocker.id;
+  sim.occupy();
+  for (let i = 0; i < 300 && sim.phase !== "blocking"; i++) sim.step(0.1);
+  assert.equal(sim.phase, "blocking");
+  assert.equal(sim.blocker.lane, 0);
+  assert.equal(sim.blocker.id, id);
+  assert.ok(sim.time > time && sim.time - time <= 30);
 });

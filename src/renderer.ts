@@ -1,4 +1,4 @@
-import { ROAD_LENGTH, Simulation, type Crash } from "./simulation.ts";
+import { Simulation, type Crash } from "./simulation.ts";
 
 const roundedRect = (
   ctx: CanvasRenderingContext2D,
@@ -46,6 +46,15 @@ export class RoadRenderer {
     const center = h * 0.53;
     const roadTop = center - 69;
     const roadBottom = center + 69;
+    // Follow the blocker at a scale where physical bumper gaps stay visible.
+    const visibleLength = Math.min(sim.roadLength, w / 3);
+    const origin =
+      visibleLength < sim.roadLength
+        ? (sim.blocker.x - visibleLength * 0.72 + sim.roadLength) %
+          sim.roadLength
+        : 0;
+    const scale = w / visibleLength;
+
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "#e3e8d9";
     ctx.fillRect(0, 0, w, h);
@@ -73,8 +82,10 @@ export class RoadRenderer {
       ctx.lineTo(w * 0.74 + i * 28, roadTop - 35);
       ctx.stroke();
     }
-    for (let i = 0; i < Math.floor(w / 29); i++) {
-      const x = (((i * 173 + 43) % 997) / 997) * w;
+    for (let i = 0; i < 160; i++) {
+      const worldX = (((i * 173 + 43) % 997) / 997) * sim.roadLength;
+      const x = ((worldX - origin + sim.roadLength) % sim.roadLength) * scale;
+      if (x > w + 12) continue;
       const top = i % 2 === 0;
       const y = top
         ? 37 + ((i * 29) % Math.max(1, roadTop - 87))
@@ -105,18 +116,20 @@ export class RoadRenderer {
     ctx.fillRect(0, roadBottom - 8, w, 2);
     ctx.strokeStyle = "#c4cebf";
     ctx.lineWidth = 2;
-    ctx.setLineDash([24, 25]);
+    ctx.setLineDash([30, 30]);
+    ctx.lineDashOffset = (origin * scale) % 60;
     ctx.beginPath();
     ctx.moveTo(0, center);
     ctx.lineTo(w, center);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
     for (const y of [roadTop - 14, roadBottom + 14]) {
       ctx.fillStyle = "#a3afa0";
       ctx.fillRect(0, y, w, 3);
       ctx.fillStyle = "#e8ecdd";
       ctx.fillRect(0, y, w, 1);
-      for (let x = 20; x < w; x += 64) {
+      for (let x = -((origin * scale) % 60); x < w; x += 60) {
         ctx.fillStyle = "#89968b";
         ctx.fillRect(x, y - 2, 3, 7);
       }
@@ -129,17 +142,12 @@ export class RoadRenderer {
     ctx.fillText("RIGHT · CRUISING  →", 22, center + 51);
     ctx.letterSpacing = "0px";
 
-    // Zoom narrow displays around the blocker so queued cars remain distinct.
-    const visibleLength = Math.min(ROAD_LENGTH, w / 0.72);
-    const origin =
-      visibleLength < ROAD_LENGTH
-        ? (sim.blocker.x - visibleLength * 0.72 + ROAD_LENGTH) % ROAD_LENGTH
-        : 0;
-    const scale = w / visibleLength;
+    const speedLabels: number[] = [];
     for (const vehicle of [...sim.vehicles].sort(
       (a, b) => vehicleOrder(a) - vehicleOrder(b),
     )) {
-      const x = ((vehicle.x - origin + ROAD_LENGTH) % ROAD_LENGTH) * scale;
+      const x =
+        ((vehicle.x - origin + sim.roadLength) % sim.roadLength) * scale;
       if (x > w + 20) continue;
       const y = center - 33 + vehicle.visualLane * 66;
       if (vehicle.crashed) {
@@ -152,6 +160,11 @@ export class RoadRenderer {
       const length = vehicle.kind === "truck" ? 33 : 21;
       const width = vehicle.kind === "truck" ? 15 : 12;
       const isBlocker = vehicle.kind === "blocker";
+      const bodyScale = (vehicle.length * scale) / length;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(bodyScale, bodyScale);
+      ctx.translate(-x, -y);
       if (isBlocker) {
         ctx.strokeStyle = sim.phase === "clear" ? "#c9e9a8" : "#edbd76";
         ctx.lineWidth = 1.5;
@@ -218,6 +231,8 @@ export class RoadRenderer {
         ctx.lineTo(x + 42, y + 17);
         ctx.lineTo(x + length / 2, y + 5);
         ctx.fill();
+      }
+      if (vehicle.lane === 0 && vehicle.hornUntil > sim.time) {
         ctx.strokeStyle = "#f9d68c";
         ctx.lineWidth = 1.5;
         for (const radius of [17, 23]) {
@@ -240,9 +255,10 @@ export class RoadRenderer {
         );
         ctx.stroke();
       }
+      ctx.restore();
       if (sim.attack?.kind === "gun" && sim.attack.actorId === vehicle.id) {
         const distance =
-          (sim.blocker.x - vehicle.x + ROAD_LENGTH) % ROAD_LENGTH;
+          (sim.blocker.x - vehicle.x + sim.roadLength) % sim.roadLength;
         const targetX = x + distance * scale;
         ctx.fillStyle = "#25383c";
         ctx.fillRect(x + 7, y - 6, 10, 3);
@@ -265,7 +281,12 @@ export class RoadRenderer {
         ctx.lineTo(x + 17, y + 6);
         ctx.fill();
       }
-      if (this.showSpeeds && !isBlocker) {
+      if (
+        this.showSpeeds &&
+        !isBlocker &&
+        !speedLabels.some((label) => Math.abs(label - x) < 25)
+      ) {
+        speedLabels.push(x);
         ctx.font = "9px Arial";
         ctx.textAlign = "center";
         ctx.fillStyle = "#eef0e4aa";
@@ -292,17 +313,17 @@ export class RoadRenderer {
       }
       ctx.textAlign = "left";
     }
-    // Schematic distance markers, intentionally not a physical vehicle scale.
     ctx.fillStyle = "#718068";
     ctx.font = "10px Arial";
-    for (let i = 0; i <= 4; i++) {
-      const x = 22 + ((w - 44) * i) / 4;
-      ctx.textAlign = i === 4 ? "right" : "left";
-      const distance =
-        origin === 0 && visibleLength === ROAD_LENGTH
-          ? (i * ROAD_LENGTH) / 4
-          : (origin + (i * visibleLength) / 4) % ROAD_LENGTH;
-      ctx.fillText(`${(distance / 1000).toFixed(1)} km`, x, h - 24);
+    ctx.textAlign = "center";
+    for (
+      let distance = Math.ceil(origin / 50) * 50;
+      distance < origin + visibleLength;
+      distance += 50
+    ) {
+      const x = (distance - origin) * scale;
+      if (x >= 20 && x <= w - 20)
+        ctx.fillText(`${distance % sim.roadLength} m`, x, h - 24);
     }
     ctx.textAlign = "left";
   }
@@ -443,6 +464,7 @@ export function drawChart(canvas: HTMLCanvasElement, sim: Simulation): void {
   ctx.lineTo(right, yFor(sim.settings.speedLimit));
   ctx.stroke();
   ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
   const samples = sim.samples.filter((sample) => sample.time >= start);
   if (samples.length > 1) {
     ctx.beginPath();
@@ -476,6 +498,7 @@ export function drawChart(canvas: HTMLCanvasElement, sim: Simulation): void {
     ctx.lineTo(x, bottom);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
     ctx.fillStyle = "#986d32";
     ctx.textAlign = x > width - 90 ? "right" : "left";
     ctx.fillText("Release", x + (x > width - 90 ? -5 : 5), top + 9);
@@ -489,6 +512,7 @@ export function drawChart(canvas: HTMLCanvasElement, sim: Simulation): void {
     ctx.lineTo(x, bottom);
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
     ctx.fillStyle = "#9d5c3e";
     ctx.textAlign = x > width - 90 ? "right" : "left";
     ctx.fillText("Crash", x + (x > width - 90 ? -5 : 5), top + 9);

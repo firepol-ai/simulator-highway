@@ -263,3 +263,182 @@ test("sound is opt-in and current effects stop on pause, reset, and mute", async
     await page.evaluate(() => Reflect.get(window, "audioProbe").contexts),
   ).toBe(1);
 });
+
+test("winding mode fills the window and preserves independent scene settings and pause state", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Pause simulation" }).click();
+  const originalTime = await page.locator("#clock").textContent();
+  await page.locator("#view-switch").click();
+  const bounds = await page.locator(".simulation-panel").boundingBox();
+  expect(bounds).toEqual({ x: 0, y: 0, width: 1440, height: 1100 });
+  await page.getByRole("button", { name: "Pause simulation" }).click();
+  await page.locator("#map-controls-toggle").click();
+  await expect(
+    page.getByRole("checkbox", { name: "Impatient right-side passing" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("checkbox", { name: "Random right-side passing" }),
+  ).toHaveCount(0);
+  await expect(page.locator("#vehicle-count")).toHaveAttribute("max", "800");
+  await page.getByRole("slider", { name: "Speed limit" }).fill("300");
+  await page
+    .getByRole("slider", { name: "Right-lane slow drivers" })
+    .fill("70");
+  await expect(page.locator("#speed-limit-value")).toHaveText("300");
+  await expect(page.locator("#right-lane-speed-value")).toHaveText("70");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#map-controls")).toBeHidden();
+  await page.getByRole("button", { name: "Clear the left lane" }).click();
+  await expect(
+    page.getByRole("button", { name: "Occupy the left lane" }),
+  ).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#clock")).toHaveText(originalTime!);
+  await expect(page.locator("#speed-limit-value")).toHaveText("120");
+  await expect(
+    page.getByRole("button", { name: "Resume simulation" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Clear the left lane" }),
+  ).toBeEnabled();
+  await page.locator("#view-switch").click();
+  await expect(
+    page.getByRole("button", { name: "Occupy the left lane" }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Resume simulation" }),
+  ).toBeVisible();
+  await page.locator("#map-controls-toggle").click();
+  await expect(page.locator("#right-lane-speed-value")).toHaveText("70");
+  expect(errors).toEqual([]);
+});
+
+test("winding controls remain usable on mobile and after rotation", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#view-switch").click();
+  await page.locator("#map-controls-toggle").click();
+  await page
+    .getByRole("slider", { name: "Right-lane slow drivers" })
+    .fill("90");
+  await page.getByRole("checkbox", { name: "007 mode", exact: true }).check();
+  await page.locator("#close-map-controls").click();
+  await page.getByRole("button", { name: "5×" }).click();
+  await expect(page.locator("#road-status")).toHaveText(
+    "Blocker crashed off-road",
+    { timeout: 20000 },
+  );
+  await page.getByRole("button", { name: "Pause simulation" }).click();
+  await expect(
+    page.getByRole("button", { name: "Spawn new blocker" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Spawn new blocker" }).click();
+  await expect(page.locator("#road-status")).toHaveText("Left lane blocked");
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.locator("#map-controls-toggle").click();
+  await page.getByRole("slider", { name: "Speed limit" }).fill("200");
+  await page.locator("#close-map-controls").click();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  const canvas = await page.locator("#road").boundingBox();
+  expect(canvas!.height).toBeGreaterThan(200);
+  await page.locator("#view-switch").click();
+  await expect(page.getByRole("slider", { name: "Speed limit" })).toBeVisible();
+});
+
+test("800-vehicle winding mode replaces a crashed blocker with an immediate or queued spawn", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await page.locator("#view-switch").click();
+  await page.locator("#map-controls-toggle").click();
+  await page.getByRole("slider", { name: "Traffic density" }).fill("800");
+  await expect(page.locator("#vehicle-count-value")).toHaveText("800");
+  await page.getByRole("checkbox", { name: "007 mode", exact: true }).check();
+  await page.locator("#close-map-controls").click();
+  await page.getByRole("button", { name: "5×" }).click();
+  await expect(page.locator("#road-status")).toHaveText(
+    "Blocker crashed off-road",
+    { timeout: 20000 },
+  );
+  await page.getByRole("button", { name: "Pause simulation" }).click();
+  await page.getByRole("button", { name: "Spawn new blocker" }).click();
+  // With freely moving dense traffic an insertion gap may already exist.
+  // Both immediate insertion and a visible queued request are valid.
+  if (await page.locator("#spawn-blocker").isVisible()) {
+    await expect(
+      page.getByRole("button", { name: "Waiting for gap…" }),
+    ).toBeDisabled();
+    await expect(page.locator("#action-title")).toHaveText(
+      "Resume to open a gap.",
+    );
+    await expect(page.locator("#action-title")).toBeVisible();
+  } else {
+    await expect(page.locator("#road-status")).toHaveText("Left lane blocked");
+  }
+  await page.getByRole("button", { name: "Resume simulation" }).click();
+  await expect(page.locator("#road-status")).toHaveText("Left lane blocked", {
+    timeout: 15000,
+  });
+  await expect(page.locator("#spawn-blocker")).toBeHidden();
+  await expect(page.locator("#release")).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test("straight mode supports 800 cars and preserves its count when switching views", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Pause simulation" }).click();
+  await expect(
+    page.getByRole("slider", { name: "Traffic density" }),
+  ).toHaveAttribute("max", "800");
+  await page.getByRole("slider", { name: "Traffic density" }).fill("800");
+  await expect(page.locator("#vehicle-count-value")).toHaveText("800");
+  await expect(page.locator(".road-scale")).toContainText("6 KM LOOP");
+  await page.locator("#view-switch").click();
+  await page.locator("#map-controls-toggle").click();
+  await expect(page.locator("#vehicle-count-value")).toHaveText("800");
+  await page.locator("#close-map-controls").click();
+  await page.locator("#view-switch").click();
+  await expect(page.locator("#vehicle-count-value")).toHaveText("800");
+  await page.getByRole("slider", { name: "Traffic density" }).fill("44");
+  await expect(page.locator(".road-scale")).toContainText("1.2 KM LOOP");
+  await expect(page.locator("#vehicle-count-value")).toHaveText("44");
+  expect(errors).toEqual([]);
+});
+
+test("winding view clears and reoccupies the left lane with the same blocker", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.locator("#view-switch").click();
+  await page.getByRole("button", { name: "5×" }).click();
+  await page.getByRole("button", { name: "Clear the left lane" }).click();
+  await expect(page.locator("#road-status")).toHaveText("Blocker moved right", {
+    timeout: 20000,
+  });
+  await page.getByRole("button", { name: "Occupy the left lane" }).click();
+  await expect(page.locator("#road-status")).toHaveText("Left lane blocked", {
+    timeout: 20000,
+  });
+  await expect(page.locator("#release")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.locator("#clock")).not.toHaveText("00:00");
+});
